@@ -563,12 +563,13 @@ public:
 	bool open(const char *host, const char *user, const char *passwd, const char *db,
 		unsigned long clientflag=0, unsigned int port=0, const char *unix_socket=NULL)
 	{
+		if(m_mysql==NULL) m_mysql=mysql_init(NULL);
 		return mysql_real_connect(m_mysql, host, user, passwd, db, port, unix_socket, clientflag)!=NULL;
 	}
 	void close()
 	{
 		mysql_close(m_mysql);
-		m_mysql=mysql_init(NULL);
+		m_mysql=NULL;
 	}
 	void refresh(unsigned int options)
 	{

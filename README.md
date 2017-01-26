@@ -33,18 +33,22 @@ auto stmt=db.open_command("insert into test(Name, CreateTime) values(?, now())")
 qtl::execute(stmt, &affected, "second_user", "third_user");
 
 ```
+或者
+```C++
+stmt<<"second_user"<<"third_user";
+
+```
 
 #### 4. 查询数据，以回调函数方式处理数据
-当回调函数返回false时，中止遍历数据。
+程序会一直遍历数据集，直到当回调函数返回false为止。如果回调函数无返回值，相当于返回true。
 
 ```C++
-db.query("select * from test where id=?",
-	id, std::tuple<uint32_t, std::string, qtl::mysql::time>(),
-	[](uint32_t id, const std::string& name, qtl::mysql::time& create_time) {
+db.query("select * from test where id=?", id, 
+	[](uint32_t id, const std::string& name, const qtl::mysql::time& create_time) {
 		printf("ID=\"%d\", Name=\"%s\"\n", id, name.data());
-		return true;
 });
 ```
+当无法根据回调函数的参数推断字段类型时，请使用query_explicit代替query，手动指定数据类型进行查询。
 
 #### 5. 也可以把数据绑定到结构上
 
@@ -72,14 +76,24 @@ namespace qtl
 	}
 }
 
-db.query("select * from test where id=?",
-	id, TestMysqlRecord(),
-	[](TestMysqlRecord& record) {
+db.query("select * from test where id=?", id, 
+	[](const TestMysqlRecord& record) {
 		printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
-		return true;
 });
 ```
-#### 6. 以迭代器方式访问数据
+#### 6. 用成员函数做为查询的回调函数
+当记录类有不带参数的成员函数时，可以直接用作查询的回调函数
+```C++
+struct TestMysqlRecord
+{
+	void print();
+};
+
+db.query("select * from test where id=?", id,
+	&TestMysqlRecord::print);
+```
+
+#### 7. 以迭代器方式访问数据
 
 ```C++
 for(auto& record : db.result<TestMysqlRecord>("select * from test"))
@@ -87,6 +101,12 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 	printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
 }
 ```
+#### 8. 指示器
+可以用指示器获取查询结果的更多信息。指示器包含以下成员：
+- data 存储字段的数据
+- is_null 字段是否为空
+- length 数据的实际长度
+- is_truncated 数据是否被截断
 
 ## 有关MySQL的说明
 
@@ -116,7 +136,7 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 | bigint | int64_t<br/>uint64_t |
 | float | float |
 | double | double |
-| char<br>varchar | char[N]<br>std::array<char, N><br>std::string |
+| char<br>varchar | char[N]<br>std::array&lt;char, N&gt;<br>std::string |
 | blob<br>binary<br>text | qtl::blob_data<br>std::ostream |
 | date<br>time<br>datetime<br>timestamp | qtl::mysql::time |
 
@@ -152,8 +172,8 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 | ------- | ------ |
 | integer | int</br>int64_t |
 | real | double |
-| text | char[N]<br>std::array<char, N><br>std::string<br>std::wstring |
-| blob | qtl::const_blob_data<br>qtl::blob_data<br>ios::ostream |
+| text | char[N]<br>std::array&lt;char, N&gt;<br>std::string<br>std::wstring |
+| blob | qtl::const_blob_data<br>qtl::blob_data<br>std::ostream |
 
 当以qtl::const_blob_data接收blob数据时，直接返回SQLite给出的数据地址；当以qtl::blob_data接收blob数据时，数据被复制到qtl::blob_data指定的地址。
 

@@ -17,6 +17,12 @@ struct TestMysqlRecord
 	{
 		memset(this, 0, sizeof(TestMysqlRecord));
 	}
+
+	void print() const
+	{
+		printf("ID=\"%d\", Name=\"%s\"\n",
+			id, name);
+	}
 };
 
 namespace qtl
@@ -57,11 +63,9 @@ void TestMysql::test_dual()
 	try
 	{
 		db.query("select 0, 'hello world' from dual",
-			std::tuple<uint32_t, std::string>(),
 			[](uint32_t i, const std::string& str) {
 				printf("0=\"%d\", 'hello world'=\"%s\"\n",
 					i, str.data());
-				return true;
 		});
 	}
 	catch(qtl::mysql::error& e)
@@ -77,21 +81,20 @@ void TestMysql::test_select()
 
 	try
 	{
-		db.query("select * from test where id=?", 0,
-			id, std::tuple<uint32_t, std::string, qtl::mysql::time>(),
-			[](uint32_t id, const std::string& name, qtl::mysql::time& create_time) {
+		db.query("select * from test where id=?", id, 
+			[](const qtl::indicator<uint32_t>& id, const std::string& name, const qtl::mysql::time& create_time) {
 				printf("ID=\"%d\", Name=\"%s\"\n",
-					id, name.data());
-				return true;
+					id.data, name.data());
 		});
 
-		db.query("select * from test where id=?", 0,
-			id, TestMysqlRecord(),
-			[](TestMysqlRecord& record) {
+		db.query("select * from test where id=?", id,
+			[](const TestMysqlRecord& record) {
 				printf("ID=\"%d\", Name=\"%s\"\n",
 					record.id, record.name);
-				return true;
 		});
+
+		db.query("select * from test where id=?", id, 
+			&TestMysqlRecord::print);
 	}
 	catch(qtl::mysql::error& e)
 	{

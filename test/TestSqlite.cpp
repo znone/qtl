@@ -19,6 +19,12 @@ struct TestSqliteRecord
 	{
 		memset(this, 0, sizeof(TestSqliteRecord));
 	}
+
+	void print() const
+	{
+		printf("ID=\"%d\", Name=\"%s\"\n",
+			id, name);
+	}
 };
 
 namespace qtl
@@ -66,11 +72,9 @@ void TestSqlite::test_dual()
 	try
 	{
 		db.query("select 0, 'hello world'", 
-			std::tuple<int32_t, std::string>(),
 			[](int32_t i, const std::string& str) {
 				printf("0=\"%d\", 'hello world'=\"%s\"\n",
 					i, str.data());
-				return true;
 		});
 	}
 	catch(qtl::sqlite::error& e)
@@ -153,22 +157,21 @@ void TestSqlite::test_query()
 
 	try
 	{
-		db.query("select * from test where id=?",
-			id, std::tuple<int, std::string, std::string>(),
-			[](int id, const std::string& name, std::string& create_time) {
+		db.query("select * from test where id=?", id, 
+			[](int id, const std::string& name, const std::string& create_time) {
 				printf("ID=\"%d\", Name=\"%s\", CrateTime=\"%s\"\n",
 					id, name.data(), create_time.data());
-				return true;
 		});
 
-		db.query("select ID, Name, strftime('%s', CreateTime) from test where id=?",
-			id, TestSqliteRecord(),
-			[](TestSqliteRecord& record) {
+		db.query("select ID, Name, strftime('%s', CreateTime) from test where id=?", id, 
+			[](const TestSqliteRecord& record) {
 				time_t t=record.create_time;
 				printf("ID=\"%d\", Name=\"%s\", CrateTime=\"%s\"\n",
 					record.id, record.name, asctime(localtime(&t)));
-				return true;
 		});
+
+		db.query("select * from test where id=?", id,
+			&TestSqliteRecord::print);
 	}
 	catch(qtl::sqlite::error& e)
 	{

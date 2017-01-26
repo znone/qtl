@@ -14,6 +14,7 @@
 #include <type_traits>
 #include <tuple>
 #include <memory>
+#include <functional>
 #include "apply_tuple.h"
 
 namespace qtl
@@ -88,7 +89,9 @@ struct indicator
 	explicit indicator(data_type&& src) 
 		: is_null(false), is_truncated(false), length(0), data(std::move(src)) { }
 
+	operator bool() const { return is_null; }
 	operator data_type&() { return data; }
+	operator const data_type&() const { return data; }
 };
 
 template<typename Command, typename T>
@@ -119,15 +122,153 @@ namespace detail
 {
 
 template<typename F, typename T>
-auto apply(F&& f, T&& v) -> decltype(f(v))
+struct apply_impl
 {
-	return f(v);
-}
+private:
+	typedef typename std::result_of<F(T)>::type raw_result_type;
+	template<typename Ret, bool>
+	struct impl {};
+	template<typename Ret>
+	struct impl<Ret, true>
+	{
+		typedef bool result_type;
+		result_type operator()(F&& f, T&& v)
+		{
+			f(std::forward<T>(v));
+			return true;
+		}
+	};
+	template<typename Ret>
+	struct impl<Ret, false>
+	{
+		typedef Ret result_type;
+		result_type operator()(F&& f, T&& v)
+		{
+			return f(std::forward<T>(v));
+		}
+	};
+
+public:
+	typedef typename impl<raw_result_type, std::is_void<raw_result_type>::value>::result_type result_type;
+	result_type operator()(F&& f, T&& v)
+	{
+		return impl<raw_result_type, std::is_void<raw_result_type>::value>()(std::forward<F>(f), std::forward<T>(v));
+	}
+};
 
 template<typename F, typename... Types>
-auto apply(F&& f, std::tuple<Types...>&& v) -> decltype(apply_tuple(f, v))
+struct apply_impl<F, std::tuple<Types...>>
 {
-	return apply_tuple(f, v);
+private:
+	typedef typename std::remove_reference<F>::type fun_type;
+	typedef std::tuple<Types...> arg_type;
+	typedef typename std::result_of<F(Types...)>::type raw_result_type;
+	template<typename Ret, bool>
+	struct impl {};
+	template<typename Ret>
+	struct impl<Ret, true>
+	{
+		typedef bool result_type;
+		result_type operator()(F&& f, arg_type&& v)
+		{
+			apply_tuple(std::forward<F>(f), std::forward<arg_type>(v));
+			return true;
+		}
+	};
+	template<typename Ret>
+	struct impl<Ret, false>
+	{
+		typedef Ret result_type;
+		result_type operator()(F&& f, arg_type&& v)
+		{
+			return apply_tuple(std::forward<F>(f), std::forward<arg_type>(v));
+		}
+	};
+
+public:
+	typedef typename impl<raw_result_type, std::is_void<raw_result_type>::value>::result_type result_type;
+	result_type operator()(F&& f, arg_type&& v)
+	{
+		return impl<raw_result_type, std::is_void<raw_result_type>::value>()(std::forward<F>(f), std::forward<arg_type>(v));
+	}
+};
+
+template<typename Type, typename R>
+struct apply_impl<R (Type::*)(), Type>
+{
+private:
+	typedef R (Type::*fun_type)();
+	typedef R raw_result_type;
+	template<typename Ret, bool>
+	struct impl {};
+	template<typename Ret>
+	struct impl<Ret, true>
+	{
+		typedef bool result_type;
+		result_type operator()(fun_type f, Type&& v)
+		{
+			(v.*f)();
+			return true;
+		}
+	};
+	template<typename Ret>
+	struct impl<Ret, false>
+	{
+		typedef Ret result_type;
+		result_type operator()(fun_type f, Type&& v)
+		{
+			return (v.*f)();
+		}
+	};
+
+public:
+	typedef typename impl<raw_result_type, std::is_void<raw_result_type>::value>::result_type result_type;
+	result_type operator()(R (Type::*f)(), Type&& v)
+	{
+		return impl<raw_result_type, std::is_void<raw_result_type>::value>()(f, std::forward<Type>(v));
+	}
+};
+
+template<typename Type, typename R>
+struct apply_impl<R (Type::*)() const, Type>
+{
+private:
+	typedef R (Type::*fun_type)() const;
+	typedef R raw_result_type;
+	template<typename Ret, bool>
+	struct impl {};
+	template<typename Ret>
+	struct impl<Ret, true>
+	{
+		typedef bool result_type;
+		result_type operator()(fun_type f, Type&& v)
+		{
+			(v.*f)();
+			return true;
+		}
+	};
+	template<typename Ret>
+	struct impl<Ret, false>
+	{
+		typedef Ret result_type;
+		result_type operator()(fun_type f, Type&& v)
+		{
+			return (v.*f)();
+		}
+	};
+
+public:
+	typedef typename impl<raw_result_type, std::is_void<raw_result_type>::value>::result_type result_type;
+	result_type operator()(fun_type f, Type&& v)
+	{
+		return impl<raw_result_type, std::is_void<raw_result_type>::value>()(f, std::forward<Type>(v));
+	}
+};
+
+template<typename F, typename T>
+typename apply_impl<F, T>::result_type apply(F&& f, T&& v)
+{
+	return apply_impl<F, T>()(std::forward<F>(f),  std::forward<T>(v));
 }
 
 template<typename Command, size_t N, typename... Types>
@@ -182,6 +323,72 @@ public:
 	{
 	}
 };
+
+#define QTL_ARGS_TUPLE(Arg, Others) \
+	typename std::tuple<typename std::decay<Arg>::type, typename std::decay<Others>::type...>
+
+template<typename Ret, typename Arg>
+inline typename std::decay<Arg>::type make_values(Ret (*)(Arg))
+{
+	return typename std::decay<Arg>::type();
+};
+
+template<typename Ret, typename Arg, typename... Others>
+inline auto make_values(Ret (*)(Arg, Others...)) -> QTL_ARGS_TUPLE(Arg, Others)
+{
+	return QTL_ARGS_TUPLE(Arg, Others)();
+};
+
+template<typename Type, typename Ret>
+inline Type make_values(Ret (Type::*)())
+{
+	return Type();
+};
+template<typename Type, typename Ret>
+inline Type make_values(Ret (Type::*)() const)
+{
+	return Type();
+};
+
+template<typename Type, typename Ret, typename... Args>
+inline auto make_values(Ret (Type::*)(Args...)) -> QTL_ARGS_TUPLE(Type, Args)
+{
+	return QTL_ARGS_TUPLE(Type, Args)();
+};
+template<typename Type, typename Ret, typename... Args>
+inline auto make_values(Ret (Type::*)(Args...) const) -> QTL_ARGS_TUPLE(Type, Args)
+{
+	return QTL_ARGS_TUPLE(Type, Args)();
+};
+
+template<typename Type, typename Ret, typename Arg>
+inline typename std::decay<Arg>::type make_values_noclass(Ret (Type::*)(Arg))
+{
+	return typename std::decay<Arg>::type();
+};
+template<typename Type, typename Ret, typename Arg>
+inline typename std::decay<Arg>::type make_values_noclass(Ret (Type::*)(Arg) const)
+{
+	return typename std::decay<Arg>::type();
+};
+
+template<typename Type, typename Ret, typename Arg, typename... Others>
+inline auto make_values_noclass(Ret (Type::*)(Arg, Others...)) -> QTL_ARGS_TUPLE(Arg, Others)
+{
+	return QTL_ARGS_TUPLE(Arg, Others)();
+};
+template<typename Type, typename Ret, typename Arg, typename... Others>
+inline auto make_values_noclass(Ret (Type::*)(Arg, Others...) const) -> QTL_ARGS_TUPLE(Arg, Others)
+{
+	return QTL_ARGS_TUPLE(Arg, Others)();
+};
+
+template<typename Functor, typename=typename std::enable_if<std::is_member_function_pointer<decltype(&Functor::operator())>::value>::type>
+inline auto make_values(const Functor&) 
+-> decltype(make_values_noclass(&Functor::operator()))
+{
+	return make_values_noclass(&Functor::operator());
+}
 
 }
 
@@ -452,88 +659,137 @@ public:
 	}
 
 	template<typename Params, typename Values, typename ValueProc>
-	void query(const char* query_text, size_t text_length, const Params& params, Values&& values, ValueProc proc)
+	void query_explicit(const char* query_text, size_t text_length, const Params& params, Values&& values, ValueProc&& proc)
 	{
 		T* pThis=static_cast<T*>(this);
 		Command command=pThis->open_command(query_text, text_length);
 		command.execute(params);
 		while(command.fetch(std::forward<Values>(values)))
 		{
-			if(!detail::apply(proc, std::forward<Values>(values))) break;
+			if(!detail::apply(std::forward<ValueProc>(proc), std::forward<Values>(values))) break;
 		}
 		command.close();
 	}
 
 	template<typename Params, typename Values, typename ValueProc>
-	void query(const char* query_text, const Params& params, Values&& values, ValueProc proc)
+	void query_explicit(const char* query_text, const Params& params, Values&& values, ValueProc&& proc)
 	{
-		query(query_text, strlen(query_text), params, std::forward<Values>(values), proc);
+		query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Params, typename Values, typename ValueProc>
-	void query(const std::string& query_text, const Params& params, Values&& values, ValueProc proc)
+	void query_explicit(const std::string& query_text, const Params& params, Values&& values, ValueProc&& proc)
 	{
-		query(query_text.data(), query_text.size(), params, std::forward<Values>(values), proc);
+		query_explicit(query_text.data(), query_text.size(), params, std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Values, typename ValueProc>
-	void query(const char* query_text, size_t text_length, Values&& values, ValueProc proc)
+	void query_explicit(const char* query_text, size_t text_length, Values&& values, ValueProc&& proc)
 	{
-		query(query_text, text_length, std::make_tuple(), std::forward<Values>(values), proc);
+		query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Values, typename ValueProc>
-	void query(const char* query_text, Values&& values, ValueProc proc)
+	void query_explicit(const char* query_text, Values&& values, ValueProc&& proc)
 	{
-		query(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), proc);
+		query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Values, typename ValueProc>
-	void query(const std::string& query_text, Values&& values, ValueProc proc)
+	void query_explicit(const std::string& query_text, Values&& values, ValueProc&& proc)
 	{
-		query(query_text, std::make_tuple(), std::forward<Values>(values), proc);
+		query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
+	}
+
+	template<typename Params, typename ValueProc>
+	void query(const char* query_text, size_t text_length, const Params& params, ValueProc&& proc)
+	{
+		query_explicit(query_text, text_length, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
+	}
+	template<typename Params, typename ValueProc>
+	void query(const char* query_text, const Params& params, ValueProc&& proc)
+	{
+		query_explicit(query_text, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
+	}
+	template<typename Params, typename ValueProc>
+	void query(const std::string& query_text, const Params& params, ValueProc&& proc)
+	{
+		query_explicit(query_text, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
+	}
+	template<typename ValueProc>
+	void query(const char* query_text, size_t text_length, ValueProc&& proc)
+	{
+		query_explicit(query_text, text_length, detail::make_values(proc),  std::forward<ValueProc>(proc));
+	}
+	template<typename ValueProc>
+	void query(const char* query_text, ValueProc&& proc)
+	{
+		query_explicit(query_text, detail::make_values(proc),  std::forward<ValueProc>(proc));
+	}
+	template<typename ValueProc>
+	void query(const std::string& query_text, ValueProc&& proc)
+	{
+		query_explicit(query_text, detail::make_values(proc), std::forward<ValueProc>(proc));
 	}
 
 	template<typename Params, typename Values>
 	void query_first(const char* query_text, size_t text_length, const Params& params, Values&& values)
 	{
-		query(query_text, text_length, params, std::forward<Values>(values), first_record());
+		query_explicit(query_text, text_length, params, std::forward<Values>(values), first_record());
 	}
 
 	template<typename Params, typename Values>
 	void query_first(const char* query_text, const Params& params, Values&& values)
 	{
-		query(query_text, strlen(query_text), params, std::forward<Values>(values), first_record());
+		query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), first_record());
 	}
 
 	template<typename Params, typename Values>
 	void query_first(const std::string& query_text, const Params& params, Values&& values)
 	{
-		query(query_text, params, values, first_record());
+		query_explicit(query_text, params, values, first_record());
 	}
 
 	template<typename Values>
 	void query_first(const char* query_text, size_t text_length, Values&& values)
 	{
-		query(query_text, text_length, std::make_tuple(), std::forward<Values>(values), first_record());
+		query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), first_record());
 	}
 
 	template<typename Values>
 	void query_first(const char* query_text, Values&& values)
 	{
-		query(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), first_record());
+		query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), first_record());
 	}
 
 	template<typename Values>
 	void query_first(const std::string& query_text, Values&& values)
 	{
-		query(query_text, std::make_tuple(), std::forward<Values>(values), first_record());
+		query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), first_record());
+	}
+
+	template<typename... Values>
+	void query_first_direct(const char* query_text, size_t text_length, Values&... values)
+	{
+		query_first(query_text, text_length, std::tie(values...));
+	}
+
+	template<typename... Values>
+	void query_first_direct(const char* query_text, Values&... values)
+	{
+		query_first(query_text, std::tie(values...));
+	}
+
+	template<typename... Values>
+	void query_first_direct(const std::string& query_text, Values&... values)
+	{
+		query_first(query_text, std::tie(values...));
 	}
 
 protected:
 	struct nothing 
 	{
-		template<typename... Values> bool operator()(Values&...) const {  return true; }
+		template<typename... Values> bool operator()(Values&&...) const {  return true; }
 	};
 	struct first_record 
 	{
-		template<typename... Values> bool operator()(Values&...) const {  return false; }
+		template<typename... Values> bool operator()(Values&&...) const {  return false; }
 	};
 };
 
@@ -593,6 +849,5 @@ inline void execute(Command& command, uint64_t* affected, const Params& params, 
 }
 
 }
-
 
 #endif //_MYDTL_DATABASE_H_
