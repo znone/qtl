@@ -3,6 +3,7 @@
 
 #include "sqlite3.h"
 #include <algorithm>
+#include <array>
 #include "qtl_common.hpp"
 
 namespace qtl
@@ -377,6 +378,12 @@ public:
 	void open(const char *filename, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
 	{
 		int result=sqlite3_open_v2(filename, &m_db, flags, NULL);
+		if(result!=SQLITE_OK)
+			throw sqlite::error(result);
+	}
+	void open(const wchar_t *filename)
+	{
+		int result=sqlite3_open16(filename, &m_db);
 		if(result!=SQLITE_OK)
 			throw sqlite::error(result);
 	}

@@ -619,9 +619,27 @@ public:
 	}
 
 	template<typename Params>
-	uint64_t insert(const std::string& query_text, const Params& params)
+	uint64_t insert_direct(const std::string& query_text, const Params& params)
 	{
 		return insert(query_text.data(), query_text.length(), params);
+	}
+
+	template<typename... Params>
+	uint64_t insert_direct(const char* query_text, size_t text_length, const Params&... params)
+	{
+		return insert(query_text, text_length, std::make_tuple(params...));
+	}
+
+	template<typename... Params>
+	uint64_t insert_direct(const char* query_text, const Params&... params)
+	{
+		return insert(query_text, strlen(query_text), std::make_tuple(params...));
+	}
+
+	template<typename... Params>
+	uint64_t insert_direct(const std::string& query_text, const Params&... params)
+	{
+		return insert(query_text.data(), query_text.length(), std::make_tuple(params...));
 	}
 
 	template<typename Record, typename Params>
