@@ -5,7 +5,7 @@ PCH=stdafx.h.gch
 OBJ=TestSqlite.o sqlite3.o md5.o
 CFLAGS=-g -D_DEBUG -O2 -I. -I/usr/local/include 
 CXXFLAGS=-I../include -std=c++11
-LDFLAGS= -L/usr/local/lib -ldl -lcpptest -lpthread
+LDFLAGS= -L/usr/local/lib -pthread -ldl -lcpptest
 
 all : $(TARGET)
 

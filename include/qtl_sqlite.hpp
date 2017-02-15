@@ -423,6 +423,19 @@ public:
 	{
 		simple_execute("ROLLBACK TRANSACTION");
 	}
+
+	bool is_alive()
+	{
+#ifdef _WIN32
+		return true;
+#else
+		int has_moved=0;
+		int result=sqlite3_file_control(m_db, NULL, SQLITE_FCNTL_HAS_MOVED, &has_moved);
+		if(result!=SQLITE_OK)
+			throw sqlite::error(result);
+		return has_moved==0;
+#endif //_WIN32
+	}
 	const char* errmsg() const { return sqlite3_errmsg(m_db); }
 	int error() const { return sqlite3_errcode(m_db); }
 	uint64_t insert_id() { return sqlite3_last_insert_rowid(m_db); }
