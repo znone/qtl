@@ -463,12 +463,6 @@ inline void bind_record(Command& command, T&& value)
 	binder(command, std::forward<T>(value));
 }
 
-template<typename Command, typename T>
-inline void bind_record(Command& command, T& value)
-{
-	bind_record(command, std::forward<T>(value));
-}
-
 template<typename Command, typename Record>
 class query_iterator final : public std::iterator<std::forward_iterator_tag, Record>
 {

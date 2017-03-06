@@ -297,6 +297,11 @@ public:
 		m_binderAddins[index].m_after_fetch=[](const binder& bind) {
 			if(*bind.is_null)
 				memset(bind.buffer, 0, bind.buffer_length+1);
+			else
+			{
+				char* text=reinterpret_cast<char*>(bind.buffer);
+				text[*bind.length]='\0';
+			}
 		};
 	}
 

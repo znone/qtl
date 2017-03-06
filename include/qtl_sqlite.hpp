@@ -77,63 +77,63 @@ public:
 		}
 	}
 
-	void bind(int col, int value)
+	void bind_param(int index, int value)
 	{
-		verify_error(sqlite3_bind_int(m_stmt, col, value));
+		verify_error(sqlite3_bind_int(m_stmt, index+1, value));
 	}
-	void bind(int col, int64_t value)
+	void bind_param(int index, int64_t value)
 	{
-		verify_error(sqlite3_bind_int64(m_stmt, col, value));
+		verify_error(sqlite3_bind_int64(m_stmt, index+1, value));
 	}
-	void bind(int col, double value)
+	void bind_param(int index, double value)
 	{
-		verify_error(sqlite3_bind_double(m_stmt, col, value));
+		verify_error(sqlite3_bind_double(m_stmt, index+1, value));
 	}
-	void bind(int col, const char* value, size_t n=-1)
-	{
-		if(value)
-			verify_error(sqlite3_bind_text(m_stmt, col, value, (int)n, NULL));
-		else
-			verify_error(sqlite3_bind_null(m_stmt, col));
-	}
-	void bind(int col, const wchar_t* value, size_t n=-1)
+	void bind_param(int index, const char* value, size_t n=-1)
 	{
 		if(value)
-			verify_error(sqlite3_bind_text16(m_stmt, col, value, (int)n, NULL));
+			verify_error(sqlite3_bind_text(m_stmt, index+1, value, (int)n, NULL));
 		else
-			verify_error(sqlite3_bind_null(m_stmt, col));
+			verify_error(sqlite3_bind_null(m_stmt, index+1));
 	}
-	void bind(int col, const std::string& value)
+	void bind_param(int index, const wchar_t* value, size_t n=-1)
 	{
-		bind(col, value.data(), value.size());
+		if(value)
+			verify_error(sqlite3_bind_text16(m_stmt, index+1, value, (int)n, NULL));
+		else
+			verify_error(sqlite3_bind_null(m_stmt, index+1));
 	}
-	void bind(int col, const std::wstring& value)
+	void bind_param(int index, const std::string& value)
 	{
-		bind(col, value.data(), value.size());
+		bind_param(index, value.data(), value.size());
 	}
-	void bind(int col, const const_blob_data& value)
+	void bind_param(int index, const std::wstring& value)
+	{
+		bind_param(index, value.data(), value.size());
+	}
+	void bind_param(int index, const const_blob_data& value)
 	{
 		if(value.size)
 		{
 			if(value.data)
-				verify_error(sqlite3_bind_blob(m_stmt, col, value.data, (int)value.size, NULL));
+				verify_error(sqlite3_bind_blob(m_stmt, index+1, value.data, (int)value.size, NULL));
 			else
-				verify_error(sqlite3_bind_zeroblob(m_stmt, col, (int)value.size));
+				verify_error(sqlite3_bind_zeroblob(m_stmt, index+1, (int)value.size));
 		}
 		else
-			verify_error(sqlite3_bind_null(m_stmt, col));
+			verify_error(sqlite3_bind_null(m_stmt, index+1));
 	}
-	void bind_zero_blob(int col, int n)
+	void bind_zero_blob(int index, int n)
 	{
-		verify_error(sqlite3_bind_zeroblob(m_stmt, col, (int)n));
+		verify_error(sqlite3_bind_zeroblob(m_stmt, index+1, (int)n));
 	}
-	void bind(int col, qtl::null value)
+	void bind_param(int index, qtl::null)
 	{
-		verify_error(sqlite3_bind_null(m_stmt, col));
+		verify_error(sqlite3_bind_null(m_stmt, index+1));
 	}
-	void bind(int col)
+	void bind_param(int index, std::nullptr_t)
 	{
-		verify_error(sqlite3_bind_null(m_stmt, col));
+		verify_error(sqlite3_bind_null(m_stmt, index+1));
 	}
 	int get_parameter_count() const
 	{
@@ -146,12 +146,6 @@ public:
 	int get_parameter_index(const char* param_name) const
 	{
 		return sqlite3_bind_parameter_index(m_stmt, param_name);
-	}
-
-	template<class Param>
-	void bind_param(size_t index, const Param& param)
-	{
-		bind((int)index+1, param);
 	}
 
 	template<class Type>
@@ -181,7 +175,7 @@ public:
 	{
 		size_t col_length=get_column_length((int)index);
 		if(col_length>0)
-			strncpy(value, (const char*)sqlite3_column_text(m_stmt, (int)index), std::min(length, col_length));
+			strncpy(value, (const char*)sqlite3_column_text(m_stmt, (int)index), std::min(length, col_length+1));
 		else
 			memset(value, 0, length*sizeof(char));
 	}
@@ -189,7 +183,7 @@ public:
 	{
 		size_t col_length=sqlite3_column_bytes16(m_stmt, (int)index);
 		if(col_length>0)
-			wcsncpy(value, (const wchar_t*)sqlite3_column_text16(m_stmt, (int)index), std::min(length, col_length));
+			wcsncpy(value, (const wchar_t*)sqlite3_column_text16(m_stmt, (int)index), std::min(length, col_length+1));
 		else
 			memset(value, 0, length*sizeof(wchar_t));
 	}

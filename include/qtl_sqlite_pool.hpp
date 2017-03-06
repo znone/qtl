@@ -14,17 +14,20 @@ class database_pool : public qtl::database_pool<database>
 {
 public:
 	database_pool() : m_flags(SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) { }
-	virtual bool open_database(database& db) override
+	virtual database* new_database() throw() override
 	{
+		database* db=NULL;
 		try
 		{
-			db.open(m_filename.data(), m_flags);
-			return true;
+			db=new database;
+			db->open(m_filename.data(), m_flags);
 		}
 		catch (error& e)
 		{
-			return false;
+			delete db;
+			db=NULL;
 		}
+		return db;
 	}
 
 protected:

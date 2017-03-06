@@ -79,7 +79,7 @@ private:
 	std::thread m_background_thread;
 	bool m_stop_thread;
 
-	virtual bool open_database(Database& db)=0;
+	virtual Database* new_database() throw()=0;
 	void recovery(Database* db)
 	{
 		if(db==NULL) return;
@@ -101,9 +101,8 @@ private:
 
 	Database* create_database()
 	{
-		Database* db=new Database;
-		if(open_database(*db))
-			return db;
+		Database* db=new_database();
+		if(db) return db;
 
 		{
 			std::lock_guard<std::mutex> lock(m_pool_mutex);

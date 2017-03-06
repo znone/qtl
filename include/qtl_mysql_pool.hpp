@@ -15,10 +15,16 @@ class database_pool : public qtl::database_pool<database>
 public:
 	database_pool() : m_port(0) { }
 	virtual ~database_pool() { }
-	virtual bool open_database(database& db) override
+	virtual database* new_database() throw() override
 	{
-		db.charset_name("utf8");
-		return db.open(m_host.data(), m_user.data(), m_password.data(), m_database.data(), 0, m_port);
+		database* db=new database;
+		db->charset_name("utf8");
+		if(!db->open(m_host.data(), m_user.data(), m_password.data(), m_database.data(), 0, m_port))
+		{
+			delete db;
+			db=NULL;
+		}
+		return db;
 	}
 
 protected:

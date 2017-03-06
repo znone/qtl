@@ -1,5 +1,5 @@
 # QTL
-QTL是一个访问SQL数据库的C++库，目前支持MySQL和SQLite。QTL是一个轻量级的库，只由头文件组成，不需要单独编译安装。QTL是对数据库原生客户端接口的薄封装，能提供友好使用方式的同时拥有接近于使用原生接口的性能。
+QTL是一个访问SQL数据库的C++库，目前支持MySQL、SQLite和ODBC。QTL是一个轻量级的库，只由头文件组成，不需要单独编译安装。QTL是对数据库原生客户端接口的薄封装，能提供友好使用方式的同时拥有接近于使用原生接口的性能。
 使用QTL需要支持C++11的编译器。
 
 ## 使用方式
@@ -188,6 +188,65 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 表示一个SQLite的事务操作。
 - qtl::sqlite::query_result
 表示一个SQLite的查询结果集，用于以迭代器方式遍历查询结果。
+
+## 有关ODBC的说明
+
+通过ODBC访问数据库时，包含头文件qtl_odbc.hpp。
+QTL不支持ODBC的输出参数。
+
+### ODBC的参数数据绑定
+
+| 参数类型 | C++类型 |
+| ------- | ------ |
+| TINYINT | int8_t<br>uint8_t |
+| SMALLINT | int16_t<br>uint16_t |
+| INTEGER | int32_t<br>uint32_t |
+| BIGINT | int64_t<br>uint64_t |
+| FLOAT | float |
+| DOUBLE | double |
+| NUMERIC | SQL_NUMERIC_STRUCT |
+| BIT | bool |
+| CHAR<br>VARCHAR | const char*<br>std::string |
+| WCHAR<br>WVARCHAR | const wchar_t*<br>std::wstring |
+| BINARY | qtl::const_blob_data |
+| LONGVARBINARY | std::istream |
+| DATE | qtl::odbc::date |
+| TIME<br>UTCTIME | qtl::odbc::time |
+| TIMESTAMP<br>UTCDATETIME | qtl::odbc::datetime |
+| GUID | SQLGUID |
+
+### ODBC的字段数据绑定
+
+| 字段类型 | C++类型 |
+| ------- | ------ |
+| TINYINT | int8_t<br>uint8_t |
+| SMALLINT | int16_t<br>uint16_t |
+| INTEGER | int32_t<br>uint32_t |
+| BIGINT | int64_t<br>uint64_t |
+| FLOAT | float |
+| DOUBLE | double |
+| NUMERIC | SQL_NUMERIC_STRUCT |
+| BIT | bool |
+| CHAR<br>VARCHAR | char[N]<br>std::array&lt;char, N&gt;<br>std::string |
+| WCHAR<br>WVARCHAR | wchar_t[N]<br>std::array&lt;wchar_t, N&gt;<br>std::string |
+| BINARY | qtl::blob_data |
+| LONGVARBINARY | std::ostream |
+| DATE | qtl::odbc::date |
+| TIME<br>UTCTIME | qtl::odbc::time |
+| TIMESTAMP<br>UTCDATETIME | qtl::odbc::datetime |
+| GUID | SQLGUID |
+
+### ODBC相关的C++类
+- qtl::odbc::database
+表示一个ODBC的数据库连接，程序主要通过这个类操纵数据库。
+- qtl::odbc::statement
+表示一个ODBC的查询语句，实现查询相关操作。
+- qtl::odbc::error
+表示一个ODBC的错误，当操作出错时，抛出该类型的异常，包含错误信息。
+- qtl::odbc::transaction
+表示一个ODBC的事务操作。
+- qtl::odbc::query_result
+表示一个ODBC的查询结果集，用于以迭代器方式遍历查询结果。
 
 ## 关于测试
 
