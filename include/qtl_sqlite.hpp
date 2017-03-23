@@ -40,7 +40,8 @@ public:
 	statement() : m_stmt(NULL), m_fetch_result(SQLITE_OK) { }
 	statement(const statement&) = delete;
 	statement(statement&& src) 
-		: m_stmt(src.m_stmt), m_fetch_result(src.m_fetch_result)
+		: m_stmt(src.m_stmt), m_fetch_result(src.m_fetch_result),
+		m_tail_text(std::forward<std::string>(src.m_tail_text))
 	{
 		src.m_stmt=NULL;
 		src.m_fetch_result=SQLITE_OK;
@@ -52,6 +53,7 @@ public:
 		{
 			m_stmt=src.m_stmt;
 			m_fetch_result=src.m_fetch_result;
+			m_tail_text=std::forward<std::string>(src.m_tail_text);
 			src.m_stmt=NULL;
 			src.m_fetch_result=SQLITE_OK;
 		}
@@ -64,8 +66,13 @@ public:
 
 	void open(sqlite3* db, const char* query_text, size_t text_length=-1)
 	{
+		const char* tail=NULL;
 		close();
-		verify_error(sqlite3_prepare_v2(db, query_text, (int)text_length, &m_stmt, NULL));
+		verify_error(sqlite3_prepare_v2(db, query_text, (int)text_length, &m_stmt, &tail));
+		if(tail!=NULL)
+			m_tail_text.assign(tail, query_text+text_length);
+		else
+			m_tail_text.clear();
 	}
 
 	void close()
@@ -245,19 +252,17 @@ public:
 	{
 		return sqlite3_column_text(m_stmt, col);
 	}
-	void get_value(int col, std::string&& value) const
+
+	template<typename CharT>
+	const CharT* get_text_value(int col) const;
+
+	template<typename T>
+	void get_value(int col, qtl::bind_string_helper<T>&& value) const
 	{
+		typedef typename qtl::bind_string_helper<T>::char_type char_type;
 		int bytes=sqlite3_column_bytes(m_stmt, col);
 		if(bytes>0)
-			value.assign((const char*)sqlite3_column_text(m_stmt, col), bytes/sizeof(char));
-		else
-			value.clear();
-	}
-	void get_value(int col, std::wstring&& value) const
-	{
-		int bytes=sqlite3_column_bytes16(m_stmt, col);
-		if(bytes>0)
-			value.assign((const wchar_t*)sqlite3_column_text16(m_stmt, col), bytes/sizeof(wchar_t));
+			value.assign(get_text_value<char_type>(col), bytes/sizeof(char_type));
 		else
 			value.clear();
 	}
@@ -326,6 +331,23 @@ public:
 		return result;
 	}
 
+	bool next_result()
+	{
+		sqlite3* db=sqlite3_db_handle(m_stmt);
+		int count=0;
+		do
+		{
+			trim_string(m_tail_text, " \t\r\n");
+			if(!m_tail_text.empty())
+			{
+				open(db, m_tail_text.data(), m_tail_text.size());
+				count=sqlite3_column_count(m_stmt);
+				m_fetch_result=SQLITE_OK;
+			}
+		}while(!m_tail_text.empty() && count==0);
+		return count>0;;
+	}
+
 	int affetced_rows()
 	{
 		sqlite3* db=sqlite3_db_handle(m_stmt);
@@ -340,6 +362,8 @@ public:
 
 protected:
 	sqlite3_stmt* m_stmt;
+	std::string m_tail_text;
+	
 	int m_fetch_result;
 	void verify_error(int e)
 	{
@@ -460,6 +484,17 @@ inline statement& operator<<(statement& stmt, const Params& params)
 	stmt.reset();
 	stmt.execute(params);
 	return stmt;
+}
+
+template<>
+inline const char* statement::get_text_value<char>(int col) const
+{
+	return (const char*)sqlite3_column_text(m_stmt, col);
+}
+template<>
+inline const wchar_t* statement::get_text_value<wchar_t>(int col) const
+{
+	return (const wchar_t*)sqlite3_column_text16(m_stmt, col);
 }
 
 }

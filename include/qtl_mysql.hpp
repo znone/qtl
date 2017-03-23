@@ -163,6 +163,24 @@ public:
 	}
 };
 
+
+template<typename T>
+inline void bind(binder& binder, const T& v)
+{
+	binder.bind(const_cast<T&>(v));
+}
+
+template<typename T>
+inline void bind(binder& binder, T&& v)
+{
+	binder.bind(v);
+}
+
+inline void bind(binder& binder, const char* str)
+{
+	binder.bind((char*)str, (unsigned long)strlen(str));
+}
+
 class statement;
 class database;
 
@@ -273,7 +291,7 @@ public:
 	template<class Param>
 	void bind_param(size_t index, const Param& param)
 	{
-		qtl::bind(m_binders[index], param);
+		bind(m_binders[index], param);
 	}
 
 	template<class Type>
@@ -281,7 +299,7 @@ public:
 	{
 		if(m_result)
 		{
-			qtl::bind(m_binders[index], std::forward<Type>(value));
+			bind(m_binders[index], std::forward<Type>(value));
 			m_binderAddins[index].m_after_fetch=if_null<typename std::remove_reference<Type>::type>(value);
 		}
 	}
@@ -311,17 +329,20 @@ public:
 		bind_field(index, value.data(), value.size());
 	}
 
-	void bind_field(size_t index, std::string&& value)
+	template<typename T>
+	void bind_field(size_t index, bind_string_helper<T>&& value)
 	{
 		if(m_result)
 		{
 			MYSQL_FIELD* field=mysql_fetch_field_direct(m_result, (unsigned int)index);
 			if(field==NULL) throw_exception();
 			value.clear();
-			value.resize(field->length);
-			m_binderAddins[index].m_after_fetch=resize_binder<std::string>(value);
-			qtl::bind(m_binders[index], std::forward<std::string>(value));
-			m_binders[index].buffer_type=field->type;
+			typename bind_string_helper<T>::char_type* data=value.alloc(field->length);
+			m_binderAddins[index].m_after_fetch= [value](const binder& b) mutable {
+				if(*b.is_null) value.clear();
+				else value.truncate(*b.length);
+			};
+			m_binders[index].bind(data, field->length, field->type);
 		}
 	}
 	void bind_param(size_t index, std::istream& param)
@@ -428,6 +449,23 @@ public:
 		return false;
 	}
 
+	bool next_result()
+	{
+		if(m_result)
+		{
+			mysql_free_result(m_result);
+			m_result=NULL;
+			mysql_stmt_free_result(m_stmt);
+		}
+		int ret=0;
+		do
+		{
+			ret=mysql_stmt_next_result(m_stmt);
+			if(ret>0) throw_exception();
+		}while(ret==0 && mysql_stmt_field_count(m_stmt)<=0);
+		return ret==0;
+	}
+
 	my_ulonglong affetced_rows()
 	{
 		return mysql_stmt_affected_rows(m_stmt);
@@ -490,19 +528,6 @@ private:
 	void throw_exception() { throw mysql::error(*this); }
 
 private:
-	template<typename CharCont>
-	struct resize_binder
-	{
-		resize_binder(CharCont& cont) : m_cont(cont) { }
-		void operator()(const binder& b) const
-		{
-			if(*b.is_null) m_cont.clear();
-			else m_cont.resize(*b.length);
-		}
-
-		CharCont& m_cont;
-	};
-
 	template<typename Value>
 	struct if_null
 	{

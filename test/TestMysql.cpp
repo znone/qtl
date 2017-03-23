@@ -214,7 +214,7 @@ void TestMysql::test_insert_blob()
 		fs.clear();
 		fs.seekg(0, ios::beg);
 		id=db.insert("INSERT INTO test_blob (Filename, Content, MD5) values(?, ?, ?)",
-			make_tuple(filename, ref((istream&)fs), qtl::const_blob_data(md5, sizeof(md5))));
+			forward_as_tuple(filename, (istream&)fs, qtl::const_blob_data(md5, sizeof(md5))));
 	}
 	catch(qtl::mysql::error& e)
 	{
@@ -238,7 +238,7 @@ void TestMysql::test_select_blob()
 		fs.seekg(ios::beg);
 		std::string source_file;
 		db.query_first("SELECT Filename, Content, MD5 FROM test_blob WHERE id=?", make_tuple(id),
-			make_tuple(ref(source_file), ref((ostream&)fs), qtl::blob_data(md5, sizeof(md5))));
+			forward_as_tuple(source_file, (ostream&)fs, qtl::blob_data(md5, sizeof(md5))));
 		fs.flush();
 		mysql_hex_string(md5_hex, (char*)md5, sizeof(md5));
 		printf("MD5 of file %s stored in database: %s.\n", source_file.data(), md5_hex);

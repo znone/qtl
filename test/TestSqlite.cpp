@@ -225,7 +225,7 @@ void TestSqlite::test_insert_blob()
 		print_hex(md5, sizeof(md5));
 		cout<<endl;
 		id=db.insert("INSERT INTO test_blob (Filename, Content, MD5) values(?, ?, ?)",
-			make_tuple(filename, qtl::const_blob_data(str.data(), str.size()), qtl::const_blob_data(md5, sizeof(md5))));
+			forward_as_tuple(filename, qtl::const_blob_data(str.data(), str.size()), qtl::const_blob_data(md5, sizeof(md5))));
 	}
 	catch(qtl::sqlite::error& e)
 	{
@@ -248,7 +248,7 @@ void TestSqlite::test_select_blob()
 
 		fs.seekg(ios::beg);
 		db.query_first("SELECT Filename, Content, MD5 FROM test_blob WHERE id=?", make_tuple(id),
-			make_tuple(ref(source_file), ref(fs), qtl::blob_data(md5, 16)));
+			forward_as_tuple(source_file, fs, qtl::blob_data(md5, 16)));
 		fs.flush();
 		cout<<"MD5 of file "<<source_file<<" stored in database: ";
 		print_hex((const unsigned char*)md5, sizeof(md5));

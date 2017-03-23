@@ -192,7 +192,7 @@ void TestOdbc::test_insert_blob()
 		fs.clear();
 		fs.seekg(0, ios::beg);
 		m_db.execute("INSERT INTO test_blob (Filename, [Content], MD5) values(?, ?, ?)",
-			make_tuple(filename, ref((istream&)fs), qtl::const_blob_data(md5, sizeof(md5))));
+			forward_as_tuple(filename, (istream&)fs, qtl::const_blob_data(md5, sizeof(md5))));
 		m_db.query_first("SELECT @@IDENTITY", id);
 	}
 	catch(qtl::odbc::error& e)
@@ -214,7 +214,7 @@ void TestOdbc::test_select_blob()
 		fs.seekg(ios::beg);
 		std::string source_file;
 		m_db.query_first("SELECT Filename, MD5 , [Content]FROM test_blob WHERE id=?", make_tuple(id),
-			make_tuple(ref(source_file), qtl::blob_data(md5, sizeof(md5)), ref((ostream&)fs)));
+			forward_as_tuple(source_file, qtl::blob_data(md5, sizeof(md5)), (ostream&)fs));
 		fs.flush();
 		cout<<"MD5 of file "<<source_file<<" stored in database: ";
 		print_hex((const unsigned char*)md5, sizeof(md5));

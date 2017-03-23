@@ -42,34 +42,11 @@ struct const_blob_data
 
 const size_t blob_buffer_size=64*1024;
 
-template<typename Binder, typename T>
-inline void bind(Binder& binder, const T& v)
+inline std::string& trim_string(std::string& str, const char* target)
 {
-	binder.bind(const_cast<T&>(v));
-}
-
-template<typename Binder, typename T>
-inline void bind(Binder& binder, T&& v)
-{
-	binder.bind(v);
-}
-
-template<typename Binder>
-inline void bind(Binder& binder, const char* str)
-{
-	binder.bind((char*)str, (unsigned long)strlen(str));
-}
-
-template<typename Binder>
-inline void bind(Binder& binder, const std::string& str)
-{
-	binder.bind((char*)str.data(), (unsigned long)str.size());
-}
-
-template<typename Binder>
-inline void bind(Binder& binder, std::string&& str)
-{
-	binder.bind((char*)str.data(), (unsigned long)str.size());
+	str.erase(0, str.find_first_not_of(target));
+	str.erase(str.find_last_not_of(target)+1);
+	return str;
 }
 
 template<typename T>
@@ -94,6 +71,29 @@ struct indicator
 	operator const data_type&() const { return data; }
 };
 
+template<typename StringT>
+struct bind_string_helper
+{
+	typedef StringT string_type;
+	typedef typename string_type::value_type char_type;
+	bind_string_helper(string_type&& value) : m_value(std::forward<string_type>(value)) { }
+	void clear() { m_value.clear(); }
+	char_type* alloc(size_t n) { m_value.resize(n); return (char_type*)m_value.data(); }
+	void truncate(size_t n) { m_value.resize(n); }
+	void assign(const char_type* str, size_t n) { m_value.assign(str, n); }
+	const char_type* data() const { return m_value.data(); }
+	size_t size() const { return m_value.size(); }
+private:
+	string_type&& m_value;
+};
+
+template<typename StringT>
+inline bind_string_helper<typename std::decay<StringT>::type> bind_string(StringT&& value)
+{
+	typedef typename std::decay<StringT>::type string_type;
+	return bind_string_helper<string_type>(std::forward<string_type>(value));
+}
+
 template<typename Command, typename T>
 inline void bind_param(Command& command, size_t index, const T& param)
 {
@@ -112,10 +112,46 @@ inline void bind_field(Command& command, size_t index, char (&value)[N])
 	command.bind_field(index, value, N);
 }
 
+template<typename Command, size_t N>
+inline void bind_field(Command& command, size_t index, wchar_t (&value)[N])
+{
+	command.bind_field(index, value, N);
+}
+
 template<typename Command>
 inline void bind_field(Command& command, size_t index, char* value, size_t length)
 {
 	command.bind_field(index, value, length);
+}
+
+template<typename Command>
+inline void bind_field(Command& command, size_t index, wchar_t* value, size_t length)
+{
+	command.bind_field(index, value, length);
+}
+
+template<typename Command>
+inline void bind_field(Command& command, size_t index, std::string&& value)
+{
+	command.bind_field(index, bind_string(std::forward<std::string>(value)));
+}
+
+template<typename Command>
+inline void bind_field(Command& command, size_t index, std::wstring&& value)
+{
+	command.bind_field(index, bind_string(std::forward<std::wstring>(value)));
+}
+
+template<typename Command>
+inline void bind_field(Command& command, size_t index, std::vector<char>&& value)
+{
+	command.bind_field(index, bind_string(std::forward<std::vector<char>>(value)));
+}
+
+template<typename Command>
+inline void bind_field(Command& command, size_t index, std::vector<wchar_t>&& value)
+{
+	command.bind_field(index, bind_string(std::forward<std::vector<wchar_t>>(value)));
 }
 
 namespace detail
@@ -390,6 +426,28 @@ inline auto make_values(const Functor&)
 	return make_values_noclass(&Functor::operator());
 }
 
+template<typename Command, typename ValueProc>
+inline void fetch_command(Command& command, ValueProc&& proc)
+{
+	auto values=make_values(proc);
+	typedef decltype(values) values_type;
+	while(command.fetch(std::forward<values_type>(values)))
+	{
+		if(!detail::apply(std::forward<ValueProc>(proc), std::forward<values_type>(values))) 
+			break;
+	}
+}
+
+template<typename Command, typename ValueProc, typename... OtherProc>
+inline void fetch_command(Command& command, ValueProc&& proc, OtherProc&&... other)
+{
+	fetch_command(command, std::forward<ValueProc>(proc));
+	if(command.next_result())
+	{
+		fetch_command(command, std::forward<OtherProc>(other)...);
+	}
+}
+
 }
 
 template<typename Command, typename T>
@@ -581,17 +639,17 @@ public:
 	template<typename... Params>
 	void execute_direct(const char* query_text, size_t text_length, uint64_t* affected, const Params&... params)
 	{
-		execute(query_text, text_length, std::make_tuple(params...), affected);
+		execute(query_text, text_length, std::forward_as_tuple(params...), affected);
 	}
 	template<typename... Params>
 	void execute_direct(const char* query_text, uint64_t* affected, const Params&... params)
 	{
-		execute(query_text, std::make_tuple(params...), affected);
+		execute(query_text, std::forward_as_tuple(params...), affected);
 	}
 	template<typename... Params>
 	void execute_direct(const std::string& query_text, uint64_t* affected, const Params&... params)
 	{
-		execute(query_text, std::make_tuple(params...), affected);
+		execute(query_text, std::forward_as_tuple(params...), affected);
 	}
 
 	template<typename Params>
@@ -621,19 +679,19 @@ public:
 	template<typename... Params>
 	uint64_t insert_direct(const char* query_text, size_t text_length, const Params&... params)
 	{
-		return insert(query_text, text_length, std::make_tuple(params...));
+		return insert(query_text, text_length, std::forward_as_tuple(params...));
 	}
 
 	template<typename... Params>
 	uint64_t insert_direct(const char* query_text, const Params&... params)
 	{
-		return insert(query_text, strlen(query_text), std::make_tuple(params...));
+		return insert(query_text, strlen(query_text), std::forward_as_tuple(params...));
 	}
 
 	template<typename... Params>
 	uint64_t insert_direct(const std::string& query_text, const Params&... params)
 	{
-		return insert(query_text.data(), query_text.length(), std::make_tuple(params...));
+		return insert(query_text.data(), query_text.length(), std::forward_as_tuple(params...));
 	}
 
 	template<typename Record, typename Params>
@@ -738,6 +796,41 @@ public:
 	void query(const std::string& query_text, ValueProc&& proc)
 	{
 		query_explicit(query_text, detail::make_values(proc), std::forward<ValueProc>(proc));
+	}
+
+	template<typename Params, typename... ValueProc>
+	void query_multi_with_params(const char* query_text, size_t text_length, const Params& params, ValueProc&&... proc)
+	{
+		T* pThis=static_cast<T*>(this);
+		Command command=pThis->open_command(query_text, text_length);
+		command.execute(params);
+		detail::fetch_command(command, std::forward<ValueProc>(proc)...);
+		command.close();
+	}
+	template<typename Params, typename... ValueProc>
+	void query_multi_with_params(const char* query_text, const Params& params, ValueProc&&... proc)
+	{
+		query_multi_with_params(query_text, strlen(query_text), params, std::forward<ValueProc>(proc)...);
+	}
+	template<typename Params, typename... ValueProc>
+	void query_multi_with_params(const std::string& query_text, const Params& params, ValueProc&&... proc)
+	{
+		query_multi_with_params(query_text.data(), query_text.size(), params, std::forward<ValueProc>(proc)...);
+	}
+	template<typename... ValueProc>
+	void query_multi(const char* query_text, size_t text_length, ValueProc&&... proc)
+	{
+		query_multi_with_params<std::tuple<>>(query_text, text_length, std::make_tuple(), std::forward<ValueProc>(proc)...);
+	}
+	template<typename... ValueProc>
+	void query_multi(const char* query_text, ValueProc&&... proc)
+	{
+		query_multi_with_params<std::tuple<>>(query_text, strlen(query_text), std::make_tuple(), std::forward<ValueProc>(proc)...);
+	}
+	template<typename... ValueProc>
+	void query_multi(const std::string& query_text, ValueProc&&... proc)
+	{
+		query_multi_with_params<std::tuple<>>(query_text.data(), query_text.size(), std::make_tuple(), std::forward<ValueProc>(proc)...);
 	}
 
 	template<typename Params, typename Values>

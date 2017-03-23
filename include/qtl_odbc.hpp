@@ -358,7 +358,7 @@ public:
 				text[p.m_indicator]='\0';
 			}
 		};
-		verify_error(SQLBindCol(m_handle, index+1, SQL_C_CHAR, v, n-1, &m_params[index].m_indicator));
+		verify_error(SQLBindCol(m_handle, index+1, SQL_C_CHAR, v, n, &m_params[index].m_indicator));
 	}
 	void bind_field(SQLUSMALLINT index, wchar_t* v, size_t n)
 	{
@@ -373,20 +373,20 @@ public:
 				text[p.m_indicator]='\0';
 			}
 		};
-		verify_error(SQLBindCol(m_handle, index+1, SQL_C_WCHAR, v, n-1, &m_params[index].m_indicator));
+		verify_error(SQLBindCol(m_handle, index+1, SQL_C_WCHAR, v, n, &m_params[index].m_indicator));
 	}
-	template<typename CharType>
-	void bind_field(SQLUSMALLINT index, std::basic_string<CharType>&& v)
+	template<typename T>
+	void bind_field(SQLUSMALLINT index, qtl::bind_string_helper<T>&& v)
 	{
 		SQLLEN length=0;
 		SQLColAttribute(m_handle, index+1, SQL_DESC_LENGTH, NULL, 0, NULL, &length);
-		v.resize(length);
-		bind_field(index, const_cast<char*>(v.data()), v.size()+1);
-		m_params[index].m_after_fetch=[&v](const param_data& p) {
+		typename qtl::bind_string_helper<T>::char_type* data=v.alloc(length);
+		bind_field(index, data, length+1);
+		m_params[index].m_after_fetch=[v](const param_data& p) mutable {
 			if(p.m_indicator==SQL_NULL_DATA)
 				v.clear();
 			else
-				v.resize(p.m_indicator);
+				v.truncate(p.m_indicator);
 		};
 	}
 	template<size_t N>
@@ -514,6 +514,21 @@ public:
 		}
 		verify_error(ret);
 		return false;
+	}
+
+	bool next_result()
+	{
+		SQLRETURN ret;
+		SQLSMALLINT count=0;
+		m_binded_cols=false;
+		do
+		{
+			ret=SQLMoreResults(m_handle);
+			if(ret==SQL_ERROR || ret==SQL_INVALID_HANDLE)
+				verify_error(ret);
+			verify_error(SQLNumResultCols(m_handle, &count));
+		}while(count==0);
+		return ret==SQL_SUCCESS || ret==SQL_SUCCESS_WITH_INFO;
 	}
 
 	SQLLEN affetced_rows()

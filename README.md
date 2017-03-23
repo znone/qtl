@@ -108,6 +108,46 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 - length 数据的实际长度
 - is_truncated 数据是否被截断
 
+#### 9. 支持标准库以外的字符串类型
+除了标准库提供的std::string，另外其他库也提供了自己的字符串类，比如QT的QString，MFC/ATL的CString等。qtl也可以将字符字段绑定到这些类型上。扩展方法是：
+1. 为你的字符串类型，对 qtl::bind_string_helper 实现一个专门化。如果该字符串类型有符合标准库字符串语义的以下成员函数，可以跳过这一步：assign，clear，resize，data，size；
+2. 为你的字符串类型，对 qtl::bind_field 实现一个专门化；
+
+因为QT的QString有兼容标准库的成员函数，所以绑定到QString只需要一步：
+
+```C++
+namespace qtl
+{
+	template<typename Command>
+	inline void bind_field(Command& command, size_t index, QString&& value)
+	{
+		command.bind_field(index, bind_string(std::forward<QString>(value)));
+	}
+}
+
+```
+
+#### 10.处理返回多个结果集的查询
+有些查询语句会返回多个结果集。使用函数query执行这些查询只能得到第一个结果集。要处理所有结果集需要使用query_multi或query_multi_with_params。query_multi不会为没有结果集的查询调用回调函数。例如：
+```SQL
+CREATE PROCEDURE test_proc()
+BEGIN
+	select 0, 'hello world' from dual;
+	select now() from dual;
+END
+```
+```C++
+db.query_multi("call test_proc", 
+	[](uint32_t i, const std::string& str) {
+		printf("0=\"%d\", 'hello world'=\"%s\"\n", i, str.data());
+}, [](const qtl::mysql::time& time) {
+	struct tm tm;
+	time.as_tm(tm);
+	printf("current time is: %s\n", asctime(&tm));
+});
+
+```
+
 ## 有关MySQL的说明
 
 访问MySQL时，包含头文件qtl_mysql.hpp。
