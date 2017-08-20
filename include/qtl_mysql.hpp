@@ -558,8 +558,8 @@ public:
 		m_mysql=src.m_mysql;
 		src.m_mysql=NULL;
 	}
-	database& operator==(const database&) = delete;
-	database& operator==(database&& src)
+	database& operator=(const database&) = delete;
+	database& operator=(database&& src)
 	{
 		if(this!=&src)
 		{

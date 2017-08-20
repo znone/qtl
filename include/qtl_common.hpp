@@ -14,6 +14,8 @@
 #include <type_traits>
 #include <tuple>
 #include <memory>
+#include <string>
+#include <vector>
 #include <functional>
 #include "apply_tuple.h"
 
@@ -98,6 +100,12 @@ template<typename Command, typename T>
 inline void bind_param(Command& command, size_t index, const T& param)
 {
 	command.bind_param(index, param);
+}
+
+template<typename Command, typename T>
+inline void bind_field(Command& command, size_t index, T& value)
+{
+	bind_field(command, index, std::forward<T>(value));
 }
 
 template<typename Command, typename T>
@@ -490,7 +498,7 @@ struct record_binder
 {
 	inline void operator()(Command& command, T&& value) const
 	{
-		bind_field(command, 0, std::forward<T>(value));
+		bind_field(command, 0, std::forward<typename std::remove_reference<T>::type>(value));
 	}
 };
 
@@ -671,7 +679,7 @@ public:
 	}
 
 	template<typename Params>
-	uint64_t insert_direct(const std::string& query_text, const Params& params)
+	uint64_t insert(const std::string& query_text, const Params& params)
 	{
 		return insert(query_text.data(), query_text.length(), params);
 	}
