@@ -391,6 +391,7 @@ public:
 			m_db=src.m_db;
 			src.m_db=NULL;
 		}
+		return *this;
 	}
 
 	void open(const char *filename, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)

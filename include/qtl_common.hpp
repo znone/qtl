@@ -96,23 +96,26 @@ inline bind_string_helper<typename std::decay<StringT>::type> bind_string(String
 	return bind_string_helper<string_type>(std::forward<string_type>(value));
 }
 
+template<typename Command>
+inline void bind_param(Command& command, size_t index, const std::string& param)
+{
+	command.bind_param(index, param.data(), param.size());
+}
+
+template<typename Command>
+inline void bind_param(Command& command, size_t index, std::istream& param)
+{
+	command.bind_param(index, param);
+}
+
 template<typename Command, typename T>
 inline void bind_param(Command& command, size_t index, const T& param)
 {
 	command.bind_param(index, param);
 }
 
-template<typename Command, typename T>
-inline void bind_field(Command& command, size_t index, T& value)
-{
-	bind_field(command, index, std::forward<T>(value));
-}
-
-template<typename Command, typename T>
-inline void bind_field(Command& command, size_t index, T&& value)
-{
-	command.bind_field(index, std::forward<typename std::remove_reference<T>::type>(value));
-}
+// The order of the overloaded functions 'bind_field' is very important
+// The version with the most generic parameters is at the end
 
 template<typename Command, size_t N>
 inline void bind_field(Command& command, size_t index, char (&value)[N])
@@ -160,6 +163,34 @@ template<typename Command>
 inline void bind_field(Command& command, size_t index, std::vector<wchar_t>&& value)
 {
 	command.bind_field(index, bind_string(std::forward<std::vector<wchar_t>>(value)));
+}
+
+template<typename Command, typename T, typename=typename std::enable_if<!std::is_reference<T>::value>::type>
+inline void bind_field(Command& command, size_t index, T&& value)
+{
+	command.bind_field(index, std::forward<T>(value));
+}
+
+template<typename Command, typename T>
+inline void bind_field(Command& command, size_t index, T& value)
+{
+	bind_field(command, index, std::forward<T>(value));
+}
+
+template<typename FieldType, typename Command, typename BindType>
+inline void bind_field(Command& command, size_t index, BindType& value)
+{
+	FieldType temp=FieldType();
+	bind_field(command, index, temp);
+	value=static_cast<BindType>(temp);
+}
+
+template<typename FieldType, typename Command, typename BindType, typename CastFun>
+inline void bind_field(Command& command, size_t index, BindType& value, CastFun&& fun)
+{
+	FieldType temp=FieldType();
+	bind_field(command, index, temp);
+	fun(value, temp);
 }
 
 namespace detail
@@ -322,7 +353,7 @@ public:
 	explicit bind_helper(Command& command) : m_command(command) { }
 	void operator()(const std::tuple<Types...>& params) const
 	{
-		m_command.bind_param(N-1, std::get<N-1>(params));
+		bind_param(m_command, N-1, std::get<N-1>(params));
 		(bind_helper<Command, N-1, Types...>(m_command))(params);
 	}
 	void operator()(std::tuple<Types...>&& params) const
@@ -343,7 +374,7 @@ public:
 	explicit bind_helper(Command& command) : m_command(command) { }
 	void operator()(const std::tuple<Types...>& params) const
 	{
-		m_command.bind_param(0, std::get<0>(params));
+		bind_param(m_command, 0, std::get<0>(params));
 	}
 	void operator()(std::tuple<Types...>&& params) const
 	{

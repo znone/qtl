@@ -176,9 +176,10 @@ inline void bind(binder& binder, T&& v)
 	binder.bind(v);
 }
 
-inline void bind(binder& binder, const char* str)
+inline void bind(binder& binder, const char* str, size_t length=0)
 {
-	binder.bind((char*)str, (unsigned long)strlen(str));
+	if(length==0) length=strlen(str);
+	binder.bind(const_cast<char*>(str), static_cast<unsigned long>(length), MYSQL_TYPE_VAR_STRING);
 }
 
 class statement;
@@ -288,6 +289,35 @@ public:
 		return fetch();
 	}
 
+	void bind_param(size_t index, const char* param, size_t length)
+	{
+		bind(m_binders[index], param, length);
+	}
+
+	void bind_param(size_t index, const std::nullptr_t&)
+	{
+		m_binders[index].bind();
+	}
+
+	void bind_param(size_t index, std::istream& param)
+	{
+		m_binders[index].bind(NULL, 0, MYSQL_TYPE_LONG_BLOB);
+		m_binderAddins[index].m_after_fetch=[this, index, &param](const binder&) {
+			std::array<char, blob_buffer_size> buffer;
+			unsigned long readed=0;
+			while(!param.eof() && !param.fail())
+			{
+				param.read(buffer.data(), buffer.size());
+				readed=(unsigned long)param.gcount();
+				if(readed>0)
+				{
+					if(mysql_stmt_send_long_data(m_stmt, index, buffer.data(), readed)!=0)
+						throw_exception();
+				}
+			}
+		};
+	}
+
 	template<class Param>
 	void bind_param(size_t index, const Param& param)
 	{
@@ -302,11 +332,6 @@ public:
 			bind(m_binders[index], std::forward<Type>(value));
 			m_binderAddins[index].m_after_fetch=if_null<typename std::remove_reference<Type>::type>(value);
 		}
-	}
-
-	void bind_param(size_t index, const std::nullptr_t&)
-	{
-		m_binders[index].bind();
 	}
 
 	void bind_field(size_t index, char* value, size_t length)
@@ -345,24 +370,7 @@ public:
 			m_binders[index].bind(data, field->length, field->type);
 		}
 	}
-	void bind_param(size_t index, std::istream& param)
-	{
-		m_binders[index].bind(NULL, 0, MYSQL_TYPE_LONG_BLOB);
-		m_binderAddins[index].m_after_fetch=[this, index, &param](const binder&) {
-			std::array<char, blob_buffer_size> buffer;
-			unsigned long readed=0;
-			while(!param.eof() && !param.fail())
-			{
-				param.read(buffer.data(), buffer.size());
-				readed=(unsigned long)param.gcount();
-				if(readed>0)
-				{
-					if(mysql_stmt_send_long_data(m_stmt, index, buffer.data(), readed)!=0)
-						throw_exception();
-				}
-			}
-		};
-	}
+
 	void bind_field(size_t index, std::ostream&& value)
 	{
 		if(m_result)
@@ -558,8 +566,8 @@ public:
 		m_mysql=src.m_mysql;
 		src.m_mysql=NULL;
 	}
-	database& operator=(const database&) = delete;
-	database& operator=(database&& src)
+	database& operator==(const database&) = delete;
+	database& operator==(database&& src)
 	{
 		if(this!=&src)
 		{
@@ -567,6 +575,7 @@ public:
 			m_mysql=src.m_mysql;
 			src.m_mysql=NULL;
 		}
+		return *this;
 	}
 
 	MYSQL* handle() { return m_mysql; }
