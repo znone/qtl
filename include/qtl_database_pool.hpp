@@ -29,7 +29,14 @@ public:
 		if(m_background_thread.joinable())
 		{
 			m_stop_thread=true;
-			m_background_thread.join();
+			try
+			{
+				m_background_thread.join();
+			}
+			catch (std::system_error&)
+			{
+				//igore the error
+			}
 		}
 		clear();
 	}
