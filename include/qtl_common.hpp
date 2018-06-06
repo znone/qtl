@@ -79,6 +79,31 @@ struct bind_string_helper
 	typedef StringT string_type;
 	typedef typename string_type::value_type char_type;
 	bind_string_helper(string_type&& value) : m_value(std::forward<string_type>(value)) { }
+	bind_string_helper(const bind_string_helper& src)
+		: m_value(std::forward<std::string>(src.m_value))
+	{
+	}
+	bind_string_helper(bind_string_helper&& src)
+		: m_value(std::forward<std::string>(src.m_value))
+	{
+	}
+	bind_string_helper& operator=(const bind_string_helper& src)
+	{
+		if (this != &src)
+		{
+			m_value = std::forward<std::string>(src.m_value);
+		}
+		return *this;
+	}
+	bind_string_helper& operator=(bind_string_helper&& src)
+	{
+		if (this != &src)
+		{
+			m_value = std::forward<std::string>(src.m_value);
+		}
+		return *this;
+	}
+
 	void clear() { m_value.clear(); }
 	char_type* alloc(size_t n) { m_value.resize(n); return (char_type*)m_value.data(); }
 	void truncate(size_t n) { m_value.resize(n); }
@@ -859,17 +884,17 @@ public:
 	template<typename... ValueProc>
 	void query_multi(const char* query_text, size_t text_length, ValueProc&&... proc)
 	{
-		query_multi_with_params<std::tuple<>>(query_text, text_length, std::make_tuple(), std::forward<ValueProc>(proc)...);
+		query_multi_with_params<std::tuple<>, ValueProc...>(query_text, text_length, std::make_tuple(), std::forward<ValueProc>(proc)...);
 	}
 	template<typename... ValueProc>
 	void query_multi(const char* query_text, ValueProc&&... proc)
 	{
-		query_multi_with_params<std::tuple<>>(query_text, strlen(query_text), std::make_tuple(), std::forward<ValueProc>(proc)...);
+		query_multi_with_params<std::tuple<>, ValueProc...>(query_text, strlen(query_text), std::make_tuple(), std::forward<ValueProc>(proc)...);
 	}
 	template<typename... ValueProc>
 	void query_multi(const std::string& query_text, ValueProc&&... proc)
 	{
-		query_multi_with_params<std::tuple<>>(query_text.data(), query_text.size(), std::make_tuple(), std::forward<ValueProc>(proc)...);
+		query_multi_with_params<std::tuple<>, ValueProc...>(query_text.data(), query_text.size(), std::make_tuple(), std::forward<ValueProc>(proc)...);
 	}
 
 	template<typename Params, typename Values>

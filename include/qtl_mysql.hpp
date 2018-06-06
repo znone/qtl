@@ -70,6 +70,12 @@ public:
 	{
 		bind();
 	}
+	void bind(bool& v)
+	{
+		init();
+		buffer_type = MYSQL_TYPE_TINY;
+		buffer = &v;
+	}
 	void bind(int8_t& v)
 	{
 		init();
@@ -188,7 +194,9 @@ class database;
 class error : public std::exception
 {
 public:
+	error() : m_error(0) { }
 	error(int err, const char* errmsg) : m_error(err), m_errmsg(errmsg) { }
+	explicit error(int err) : m_error(err), m_errmsg(ER(err)) { }
 	explicit error(statement& stmt);
 	explicit error(database& db);
 	error(const error& src) = default;
@@ -363,6 +371,17 @@ public:
 			if(field==NULL) throw_exception();
 			value.clear();
 			typename bind_string_helper<T>::char_type* data=value.alloc(field->length);
+			m_binderAddins[index].m_before_fetch = [this, value](binder& b) mutable {
+				if (value.size() < b.buffer_length)
+				{
+					value.alloc(b.buffer_length);
+					if (b.buffer != value.data())
+					{
+						b.buffer = const_cast<char*>(value.data());
+						mysql_stmt_bind_result(m_stmt, &m_binders.front());
+					}
+				}
+			};
 			m_binderAddins[index].m_after_fetch= [value](const binder& b) mutable {
 				if(*b.is_null) value.clear();
 				else value.truncate(*b.length);
@@ -441,6 +460,11 @@ public:
 
 	bool fetch()
 	{
+		for (size_t i = 0; i != m_binders.size(); i++)
+		{
+			if (m_binderAddins[i].m_before_fetch)
+				m_binderAddins[i].m_before_fetch(m_binders[i]);
+		}
 		int err=mysql_stmt_fetch(m_stmt);
 		if(err==0 || err==MYSQL_DATA_TRUNCATED)
 		{
@@ -511,6 +535,7 @@ private:
 		my_bool m_isNull;
 		my_bool m_error;
 		bool is_truncated;
+		std::function<void(binder&)> m_before_fetch;
 		std::function<void(const binder&)> m_after_fetch;
 	};
 	std::vector<binder_addin> m_binderAddins;
@@ -552,6 +577,8 @@ private:
 class database final : public qtl::base_database<database, statement>
 {
 public:
+	typedef error exception_type;
+
 	database()
 	{
 		m_mysql=mysql_init(NULL);
