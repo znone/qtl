@@ -195,8 +195,8 @@ class error : public std::exception
 {
 public:
 	error() : m_error(0) { }
-	error(int err, const char* errmsg) : m_error(err), m_errmsg(errmsg) { }
-	explicit error(int err) : m_error(err), m_errmsg(ER(err)) { }
+	error(unsigned int err, const char* errmsg) : m_error(err), m_errmsg(errmsg) { }
+	explicit error(unsigned int err) : m_error(err), m_errmsg(ER(err)) { }
 	explicit error(statement& stmt);
 	explicit error(database& db);
 	error(const error& src) = default;
@@ -204,7 +204,7 @@ public:
 	int code() const throw() { return m_error; }
 	virtual const char* what() const throw() override { return m_errmsg.data(); }
 private:
-	int m_error;
+	unsigned int m_error;
 	std::string m_errmsg;
 };
 
@@ -444,6 +444,19 @@ public:
 		return m_binderAddins[index].m_isNull!=0;
 	}
 
+	size_t find_field(const char* name) const
+	{
+		if(m_result)
+		{
+			for(size_t i=0; i!=m_result->field_count; i++)
+			{
+				if(strncmp(m_result->fields[i].name, name, m_result->fields[i].name_length)==0)
+					return i;
+			}
+		}
+		return -1;
+	}
+
 	void close()
 	{
 		if(m_result)
@@ -512,11 +525,11 @@ public:
 		return &m_binders[index];
 	}
 
-	unsigned int error() 
+	unsigned int error() const
 	{
 		return mysql_stmt_errno(m_stmt);
 	}
-	const char* errmsg()
+	const char* errmsg() const
 	{
 		return mysql_stmt_error(m_stmt);
 	}
@@ -577,7 +590,7 @@ private:
 class database final : public qtl::base_database<database, statement>
 {
 public:
-	typedef error exception_type;
+	typedef mysql::error exception_type;
 
 	database()
 	{
@@ -654,11 +667,11 @@ public:
 		return m_mysql->db;
 	}
 
-	unsigned int error() 
+	unsigned int error() const
 	{
 		return mysql_errno(m_mysql);
 	}
-	const char* errmsg()
+	const char* errmsg() const
 	{
 		return mysql_error(m_mysql);
 	}

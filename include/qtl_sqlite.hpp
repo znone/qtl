@@ -215,6 +215,17 @@ public:
 		bind_field(index, value.data(), value.size());
 	}
 
+	size_t find_field(const char* name) const
+	{
+		size_t count=get_column_count();
+		for(size_t i=0; i!=count; i++)
+		{
+			if(strcmp(get_column_name(i), name)==0)
+				return i;
+		}
+		return -1;
+	}
+
 	bool fetch()
 	{
 		m_fetch_result=sqlite3_step(m_stmt);
@@ -374,6 +385,8 @@ protected:
 class database final : public qtl::base_database<database, statement>
 {
 public:	
+	typedef sqlite::error exception_type;
+
 	database() : m_db(NULL) { }
 	~database() { close(); }
 	database(const database&) = delete;

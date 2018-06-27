@@ -538,6 +538,26 @@ public:
 		return count;
 	}
 
+	size_t find_field(const char* name) const
+	{
+		SQLSMALLINT count=0;
+		verify_error(SQLNumResultCols(m_handle, &count));
+		for(SQLSMALLINT i=0; i!=count; i++)
+		{
+			SQLCHAR field_name[256]={0};
+			SQLSMALLINT name_length=0;
+			SQLSMALLINT data_type;
+			SQLULEN column_size;
+			SQLSMALLINT digits;
+			SQLSMALLINT nullable;
+			verify_error(SQLDescribeCol(m_handle, i, field_name, sizeof(field_name), &name_length,
+				&data_type, &column_size, &digits, &nullable));
+			if(strncmp((char*)field_name, name, name_length)==0)
+				return i;
+		}
+		return -1;
+	}
+
 	/*
 		ODBC do not support this function, but you can use query to instead it:
 		For MS SQL Server: SELECT @@IDENTITY;
@@ -595,6 +615,8 @@ typedef std::vector<connection_parameter> connection_parameters;
 class database : public object<SQL_HANDLE_DBC>, public qtl::base_database<database, statement>
 {
 public:
+	typedef odbc::error exception_type;
+
 	explicit database(environment& env) : object(env.handle()), m_opened(false)
 	{
 	}

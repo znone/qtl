@@ -218,6 +218,66 @@ inline void bind_field(Command& command, size_t index, BindType& value, CastFun&
 	fun(value, temp);
 }
 
+template<typename Command, typename T, typename=typename std::enable_if<!std::is_reference<T>::value>::type>
+inline void bind_field(Command& command, const char* name, T&& value)
+{
+	size_t index=command.find_field(name);
+	if(index==-1)
+		value=T();
+	else
+		command.bind_field(index, std::forward<T>(value));
+}
+
+template<typename Command, typename T>
+inline void bind_field(Command& command, const char* name, T& value)
+{
+	size_t index=command.find_field(name);
+	if(index==-1)
+		value=T();
+	else
+		bind_field(command, index, std::forward<T>(value));
+}
+
+template<typename FieldType, typename Command, typename BindType>
+inline void bind_field(Command& command, const char* name, BindType& value)
+{
+	size_t index=command.find_field(name);
+	if(index==-1)
+		value=BindType();
+	else
+		bind_field<FieldType>(command, index, value);
+}
+
+template<typename FieldType, typename Command, typename BindType, typename CastFun>
+inline void bind_field(Command& command, const char* name, BindType& value, CastFun&& fun)
+{
+	size_t index=command.find_field(name);
+	if(index==-1)
+		value=BindType();
+	else
+		bind_field<FieldType>(command, index, value, fun);
+}
+
+template<typename Command>
+inline void bind_field(Command& command, const char* name, char* value, size_t length)
+{
+	size_t index=command.find_field(name);
+	if(index==-1)
+		value[0]='\0';
+	else
+		command.bind_field(index, value, length);
+}
+
+template<typename Command>
+inline void bind_field(Command& command, const char* name, wchar_t* value, size_t length)
+{
+	size_t index=command.find_field(name);
+	if(index==-1)
+		value[0]='\0';
+	else
+		command.bind_field(index, value, length);
+}
+
 namespace detail
 {
 
@@ -404,7 +464,7 @@ public:
 	void operator()(std::tuple<Types...>&& params) const
 	{
 		typedef typename std::remove_reference<typename std::tuple_element<0, tuple_type>::type>::type param_type;
-		bind_field(m_command, 0, std::forward<param_type>(std::get<0>(std::forward<tuple_type>(params))));
+		bind_field(m_command, static_cast<size_t>(0), std::forward<param_type>(std::get<0>(std::forward<tuple_type>(params))));
 	}
 private:
 	typedef std::tuple<Types...> tuple_type;
@@ -554,7 +614,7 @@ struct record_binder
 {
 	inline void operator()(Command& command, T&& value) const
 	{
-		bind_field(command, 0, std::forward<typename std::remove_reference<T>::type>(value));
+		bind_field(command, static_cast<size_t>(0), std::forward<typename std::remove_reference<T>::type>(value));
 	}
 };
 
@@ -573,9 +633,14 @@ struct record_binder<Command, std::pair<Type1, Type2>>
 {
 	void operator()(Command& command, std::pair<Type1, Type2>&& values) const
 	{
-		bind_field(command, 0, std::forward<Type1>(values.first));
-		bind_field(command, 1, std::forward<Type2>(values.second));
+		bind_field(command, static_cast<size_t>(0), std::forward<Type1>(values.first));
+		bind_field(command, static_cast<size_t>(1), std::forward<Type2>(values.second));
 	}
+};
+
+template<typename T, typename Tag>
+struct record_with_tag : public T
+{
 };
 
 template<typename Command, typename T>
