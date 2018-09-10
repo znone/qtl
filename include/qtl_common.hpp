@@ -278,6 +278,12 @@ inline void bind_field(Command& command, const char* name, wchar_t* value, size_
 		command.bind_field(index, value, length);
 }
 
+template<typename Command, typename T>
+inline void bind_field(Command& command, const char* name, std::reference_wrapper<T>&& value)
+{
+	return bind_field(command, value.get());
+}
+
 namespace detail
 {
 
@@ -618,6 +624,15 @@ struct record_binder
 	}
 };
 
+template<typename Command, typename T>
+struct record_binder<Command, std::reference_wrapper<T>>
+{
+	inline void operator()(Command& command, std::reference_wrapper<T>&& value) const
+	{
+		bind_field(command, static_cast<size_t>(0), std::forward<typename std::remove_reference<T>::type>(value.get()));
+	}
+};
+
 template<typename Command, typename... Types>
 struct record_binder<Command, std::tuple<Types...>>
 {
@@ -641,6 +656,74 @@ struct record_binder<Command, std::pair<Type1, Type2>>
 template<typename T, typename Tag>
 struct record_with_tag : public T
 {
+};
+
+template<typename T, typename Pred>
+struct custom_binder_type : public T
+{
+	typedef T value_type;
+
+	explicit custom_binder_type(Pred pred) : m_pred(pred) { }
+	custom_binder_type(value_type&& v, Pred pred)
+		: value_type(std::forward<value_type>(v)), m_pred(pred)
+	{
+	}
+	template<typename... Args>
+	custom_binder_type(Pred pred, Args&&... args)
+		: value_type(std::forward<Args>(args)...), m_pred(pred)
+	{
+	}
+
+	template<typename Command>
+	void bind(Command& command)
+	{
+		m_pred(std::forward<T>(*this), command); // Pred maybe member function
+	}
+
+private:
+	Pred m_pred;
+};
+
+template<typename T, typename Pred>
+struct custom_binder_type<std::reference_wrapper<T>, Pred> : public std::reference_wrapper<T>
+{
+	typedef std::reference_wrapper<T> value_type;
+
+	explicit custom_binder_type(Pred pred) : m_pred(pred) { }
+	custom_binder_type(value_type&& v, Pred pred)
+		: value_type(std::forward<value_type>(v)), m_pred(pred)
+	{
+	}
+	template<typename... Args>
+	custom_binder_type(Pred pred, Args&&... args)
+		: T(std::forward<Args>(args)...), m_pred(pred)
+	{
+	}
+
+	template<typename Command>
+	void bind(Command& command)
+	{
+		m_pred(std::forward<T>(*this), command); // Pred maybe member function
+	}
+
+private:
+	Pred m_pred;
+};
+
+
+template<typename T, typename Pred>
+inline custom_binder_type<T, Pred> custom_bind(T&& v, Pred pred)
+{
+	return custom_binder_type<T, Pred>(std::forward<T>(v), pred);
+}
+
+template<typename Command, typename T, typename Pred>
+struct record_binder<Command, custom_binder_type<T, Pred>>
+{
+	void operator()(Command& command, custom_binder_type<T, Pred>&& values) const
+	{
+		values.bind(command);
+	}
 };
 
 template<typename Command, typename T>

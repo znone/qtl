@@ -6,6 +6,8 @@
 #include <type_traits>
 #include <utility>
 
+#if __cplusplus < 201703L
+
 namespace detail
 {
 	template<size_t N>
@@ -45,5 +47,15 @@ inline auto apply_tuple(F&& f, T&& t)
         typename std::decay<T>::type
     >::value>::apply_tuple(std::forward<F>(f), std::forward<T>(t));
 }
+
+#else
+
+template <class F, class Tuple>
+inline constexpr decltype(auto) apply_tuple(F&& f, Tuple&& t)
+{
+	return std::apply(std;:forward<F>(f), std::forward<Tuple>(t));
+}
+
+#endif // C++17
 
 #endif //_APPLY_TUPLE_H_

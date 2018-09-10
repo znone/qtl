@@ -102,7 +102,7 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 }
 ```
 #### 8. 指示器
-可以用指示器获取查询结果的更多信息。指示器包含以下成员：
+可以用指示器（indicator）获取查询结果的更多信息。指示器包含以下成员：
 - data 存储字段的数据
 - is_null 字段是否为空
 - length 数据的实际长度
@@ -127,7 +127,28 @@ namespace qtl
 
 ```
 
-#### 10.处理返回多个结果集的查询
+#### 10. 在不同查询中复用同一数据结构
+通常希望复用结构，将其绑定到多个不同的查询的结果集，这时候 qtl::bind_record就不够用了。需要利用 qtl::custom_bind 实现不同的绑定函数才能实现这一需求。有如下绑定函数：
+
+```C++
+void my_bind(TestMysqlRecord&& v, qtl::sqlite::statement& command)
+{
+	qtl::bind_field(command, "id", v.id);
+	qtl::bind_field(command, 1, v.name);
+	qtl::bind_field(command, 2, v.create_time);
+}
+```
+以下代码说明如何将其用于查询：
+```C++
+db->query_explicit("select * from test where id=?", id, 
+	qtl::custom_bind(TestMysqlRecord(), &my_bind),
+	[](const TestMysqlRecord& record) {
+		printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
+	});
+```
+qtl::bind_record不是唯一的方法。通过派生类也能实现类似的需求（qtl::record_with_tag）。
+
+#### 11.处理返回多个结果集的查询
 有些查询语句会返回多个结果集。使用函数query执行这些查询只能得到第一个结果集。要处理所有结果集需要使用query_multi或query_multi_with_params。query_multi不会为没有结果集的查询调用回调函数。例如：
 ```SQL
 CREATE PROCEDURE test_proc()
