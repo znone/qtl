@@ -250,6 +250,24 @@ db.query_multi("call test_proc",
 - qtl::sqlite::query_result
 表示一个SQLite的查询结果集，用于以迭代器方式遍历查询结果。
 
+### SQLite的Blob字段
+
+通过QTL，可以通过标准流的方式访问SQLite的BLOB字段。
+下面的代码，先用数字0-9向BLOB字段填充，然后再次读取字段内容并显示到屏幕。
+
+```C++
+int64_t id=db->insert("INSERT INTO test_blob (Filename, Content, MD5) values(?, ?, ?)",
+	forward_as_tuple("sample", qtl::const_blob_data(nullptr, 1024), nullptr));
+
+qtl::sqlite::blobstream bs(*db, "test_blob", "Content", id);
+generate_n(ostreambuf_iterator<char>(bs), bs.blob_size()/sizeof(char), [i=0]() mutable { 
+	return char('0'+(i++)%10);
+});
+copy(istream_iterator<char>(bs), istream_iterator<char>(), ostream_iterator<char>(cout, nullptr));
+cout<<endl;
+
+```
+
 ## 有关ODBC的说明
 
 通过ODBC访问数据库时，包含头文件qtl_odbc.hpp。
