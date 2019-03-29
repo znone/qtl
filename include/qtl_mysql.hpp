@@ -20,6 +20,10 @@ namespace qtl
 namespace mysql
 {
 
+#if MYSQL_VERSION_ID >=80000
+typedef bool my_bool;
+#endif //MySQL 8
+
 struct init
 {
 	init(int argc=-1, char **argv=NULL, char **groups=NULL) 
@@ -196,7 +200,7 @@ class error : public std::exception
 public:
 	error() : m_error(0) { }
 	error(unsigned int err, const char* errmsg) : m_error(err), m_errmsg(errmsg) { }
-	explicit error(unsigned int err) : m_error(err), m_errmsg(ER(err)) { }
+	explicit error(unsigned int err) : m_error(err), m_errmsg(err_msg(err)) { }
 	explicit error(statement& stmt);
 	explicit error(database& db);
 	error(const error& src) = default;
@@ -206,6 +210,12 @@ public:
 private:
 	unsigned int m_error;
 	std::string m_errmsg;
+
+#if MYSQL_VERSION_ID < 80000
+	static const char* err_msg(int err) { return ER(err); }
+#else
+	static const char* err_msg(int err) { return ER_CLIENT(err); }
+#endif
 };
 
 class statement final
