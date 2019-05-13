@@ -80,18 +80,18 @@ struct bind_string_helper
 	typedef typename string_type::value_type char_type;
 	bind_string_helper(string_type&& value) : m_value(std::forward<string_type>(value)) { }
 	bind_string_helper(const bind_string_helper& src)
-		: m_value(std::forward<std::string>(src.m_value))
+		: m_value(std::forward<StringT>(src.m_value))
 	{
 	}
 	bind_string_helper(bind_string_helper&& src)
-		: m_value(std::forward<std::string>(src.m_value))
+		: m_value(std::forward<StringT>(src.m_value))
 	{
 	}
 	bind_string_helper& operator=(const bind_string_helper& src)
 	{
 		if (this != &src)
 		{
-			m_value = std::forward<std::string>(src.m_value);
+			m_value = std::forward<StringT>(src.m_value);
 		}
 		return *this;
 	}
@@ -99,7 +99,7 @@ struct bind_string_helper
 	{
 		if (this != &src)
 		{
-			m_value = std::forward<std::string>(src.m_value);
+			m_value = std::forward<StringT>(src.m_value);
 		}
 		return *this;
 	}

@@ -30,9 +30,9 @@ namespace qtl
 	template<>
 	inline void bind_record<qtl::mysql::statement, TestMysqlRecord>(qtl::mysql::statement& command, TestMysqlRecord&& v)
 	{
-		qtl::bind_field(command, 0, v.id);
+		qtl::bind_field(command, static_cast<size_t>(0), v.id);
 		qtl::bind_field(command, 1, v.name);
-		qtl::bind_field(command, 3, v.create_time);
+		qtl::bind_field(command, 2, v.create_time);
 	}
 }
 
@@ -48,6 +48,8 @@ TestMysql::TestMysql()
 	TEST_ADD(TestMysql::test_iterator)
 	TEST_ADD(TestMysql::test_insert_blob)
 	TEST_ADD(TestMysql::test_select_blob)
+	//TEST_ADD(TestMysql::test_insert_stream)
+	//TEST_ADD(TestMysql::test_fetch_stream)
 }
 
 inline void TestMysql::connect(qtl::mysql::database& db)
@@ -81,19 +83,19 @@ void TestMysql::test_select()
 
 	try
 	{
-		db.query("select * from test where id=?", id, 
+		db.query("select * from test where id=?", 0, id, 
 			[](const qtl::indicator<uint32_t>& id, const std::string& name, const qtl::mysql::time& create_time) {
 				printf("ID=\"%d\", Name=\"%s\"\n",
 					id.data, name.data());
 		});
 
-		db.query("select * from test where id=?", id,
+		db.query("select * from test where id=?", 0, id,
 			[](const TestMysqlRecord& record) {
 				printf("ID=\"%d\", Name=\"%s\"\n",
 					record.id, record.name);
 		});
 
-		db.query("select * from test where id=?", id, 
+		db.query("select * from test where id=?", 0, id, 
 			&TestMysqlRecord::print);
 	}
 	catch(qtl::mysql::error& e)
@@ -249,6 +251,68 @@ void TestMysql::test_select_blob()
 		printf("MD5 of file %s: %s.\n", dest_file, md5_hex);
 	}
 	catch(qtl::mysql::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+}
+
+void TestMysql::test_insert_stream()
+{
+	qtl::mysql::database db;
+	connect(db);
+
+	try
+	{
+		qtl::mysql::blob_writer writer = [](std::ostream& s) {
+			for (size_t i = 0; i != 100; i++)
+			{
+				s << i << ": ";
+				for (size_t j = 0; j <= i; j++)
+					s << char('a' + j % 26);
+				s << endl;
+				for (size_t j = 0; j <= i; j++)
+					s << '-';
+				s << endl;
+			}
+		};
+		id = db.insert("INSERT INTO test_stream (Data) values(?)",
+				writer);
+	}
+	catch (qtl::mysql::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+}
+
+void TestMysql::test_fetch_stream()
+{
+	qtl::mysql::database db;
+	connect(db);
+
+	try
+	{
+		db.query("SELECT Data from test_stream", [](qtl::mysql::blobbuf& buf) {
+			istream s(&buf);
+			string str;
+			while (!s.eof())
+			{
+				getline(s, str);
+				cout << str << endl;
+			}
+			s.clear(ios_base::goodbit | ios_base::eofbit);
+			s.seekg(0, ios::beg);
+			if (s.good())
+			{
+				cout << "again:" << endl;
+				while (!s.eof())
+				{
+					getline(s, str);
+					cout << str << endl;
+				}
+			}
+		});
+	}
+	catch (qtl::mysql::error& e)
 	{
 		ASSERT_EXCEPTION(e);
 	}

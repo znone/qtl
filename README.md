@@ -115,15 +115,16 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 1. 为你的字符串类型，对 qtl::bind_string_helper 实现一个专门化。如果该字符串类型有符合标准库字符串语义的以下成员函数，可以跳过这一步：assign，clear，resize，data，size；
 2. 为你的字符串类型，对 qtl::bind_field 实现一个专门化；
 
-因为QT的QString有兼容标准库的成员函数，所以绑定到QString只需要一步：
+因为 QT 的 QByteArray 有兼容标准库的成员函数，所以绑定到 QByteArray 只需要一步：
+一般数据库不提供到 QChar/QString 的绑定，所以只能先用 QByteArray 接收数据，然后转换为 QString。
 
 ```C++
 namespace qtl
 {
 	template<typename Command>
-	inline void bind_field(Command& command, size_t index, QString&& value)
+	inline void bind_field(Command& command, size_t index, QByteArray&& value)
 	{
-		command.bind_field(index, bind_string(std::forward<QString>(value)));
+		command.bind_field(index, bind_string(std::forward<QByteArray>(value)));
 	}
 }
 
@@ -186,8 +187,14 @@ db.query_multi("call test_proc",
 | float | float |
 | double | double |
 | char<br>varchar | const char*<br>std::string |
-| blob<br>binary<br>text | qtl::const_blob_data<br>std::istream |
+| blob<br>binary<br>text | qtl::const_blob_data<br>std::istream<br>qtl::mysql::blob_writer |
 | date<br>time<br>datetime<br/>timestamp | qtl::mysql::time |
+
+blob_writer是一个函数，它的定义如下：
+```C++
+typedef std::function<void(std::ostream&)> blob_writer;
+```
+该函数通过std::ostream类型的参数向BLOB字段写入数据。因为MySQL API的限制，该流基本只能向前移动，并不建议对该流随意调整写入位置。
 
 ### MySQL的字段数据绑定
 
@@ -199,9 +206,18 @@ db.query_multi("call test_proc",
 | bigint | int64_t<br/>uint64_t |
 | float | float |
 | double | double |
-| char<br>varchar | char[N]<br>std::array&lt;char, N&gt;<br>std::string |
-| blob<br>binary<br>text | qtl::blob_data<br>std::ostream |
+| char<br>varchar | char[N]<br>std::array&lt;char, N&gt;<br>std::string<br>std::istream
+| blob<br>binary<br>text | qtl::blob_data<br>std::ostream<br>qtl::mysql::blobbuf
 | date<br>time<br>datetime<br>timestamp | qtl::mysql::time |
+
+可以通过qtl::mysql::blobbuf读取BLOB字段的数据：
+```C++
+void read_blob(qtl::mysql::blobbuf& buf) {
+	istream s(&buf);
+	...
+};
+```
+因为MySQL API的限制，该流只能向前移动，并不建议对该流随意调整读取位置。
 
 ### MySQL相关的C++类
 - qtl::mysql::database

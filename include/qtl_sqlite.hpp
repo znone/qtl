@@ -686,7 +686,7 @@ protected:
 			overflow();
 
 		off_type count=egptr()-eback();
-		pos_type next_pos;
+		pos_type next_pos=0;
 		if(count==0 && eback()==m_inbuf.data())
 		{
 			setg(m_inbuf.data(), m_inbuf.data(), m_inbuf.data()+m_inbuf.size());
@@ -700,9 +700,9 @@ protected:
 			return traits_type::eof();
 
 		count=std::min(count, m_size-next_pos);
-		if(sqlite3_blob_read(m_blob, eback(), count, next_pos)!=SQLITE_OK)
+		m_inpos = next_pos;
+		if(sqlite3_blob_read(m_blob, eback(), count, m_inpos)!=SQLITE_OK)
 			return traits_type::eof();
-		m_inpos=next_pos;
 		setg(eback(), eback(), eback()+count);
 		return traits_type::to_int_type(*gptr());
 	}
@@ -796,10 +796,13 @@ private:
 		{
 		case std::ios_base::beg:
 			result=off;
+			break;
 		case std::ios_base::cur:
 			result=position+off;
+			break;
 		case std::ios_base::end:
 			result=m_size-off;
+			break;
 		}
 		if(result>m_size)
 			result=m_size;

@@ -26,6 +26,8 @@ private:
 	void test_iterator();
 	void test_insert_blob();
 	void test_select_blob();
+	void test_insert_stream();
+	void test_fetch_stream();
 
 private:
 	uint32_t id;

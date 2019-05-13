@@ -20,7 +20,7 @@ namespace qtl
 namespace mysql
 {
 
-#if MYSQL_VERSION_ID >=80000
+#if LIBMYSQL_VERSION_ID >=80000
 typedef bool my_bool;
 #endif //MySQL 8
 
@@ -200,7 +200,6 @@ class error : public std::exception
 public:
 	error() : m_error(0) { }
 	error(unsigned int err, const char* errmsg) : m_error(err), m_errmsg(errmsg) { }
-	explicit error(unsigned int err) : m_error(err), m_errmsg(err_msg(err)) { }
 	explicit error(statement& stmt);
 	explicit error(database& db);
 	error(const error& src) = default;
@@ -210,13 +209,239 @@ public:
 private:
 	unsigned int m_error;
 	std::string m_errmsg;
-
-#if MYSQL_VERSION_ID < 80000
-	static const char* err_msg(int err) { return ER(err); }
-#else
-	static const char* err_msg(int err) { return ER_CLIENT(err); }
-#endif
 };
+
+class blobbuf : public std::streambuf
+{
+public:
+	blobbuf() : m_stmt(nullptr), m_field(0) 
+	{
+	}
+	blobbuf(const blobbuf&) = default;
+	blobbuf& operator=(const blobbuf&) = default;
+	virtual ~blobbuf() 
+	{ 
+		overflow();
+	}
+
+	void open(MYSQL_STMT* stmt, int field, const binder& b, std::ios_base::openmode mode)
+	{
+		if (m_stmt && m_field)
+		{
+			overflow();
+		}
+
+		assert(stmt != nullptr);
+		m_stmt = stmt;
+		m_field = field;
+		m_binder = b;
+		size_t bufsize;
+		if (b.length) m_size = *b.length;
+		if (m_size > 0)
+			bufsize = std::min<size_t>(blob_buffer_size, m_size);
+		else
+			bufsize = blob_buffer_size;
+		if (mode&std::ios_base::in)
+		{
+			m_buf.resize(bufsize);
+			m_pos = 0;
+			setg(m_buf.data(), m_buf.data(), m_buf.data());
+		}
+		else if (mode&std::ios_base::out)
+		{
+			m_buf.resize(bufsize);
+			m_pos = 0;
+			setp(m_buf.data(), m_buf.data() + bufsize);
+		}
+
+	}
+
+protected:
+	virtual pos_type seekoff(off_type off, std::ios_base::seekdir dir,
+		std::ios_base::openmode which = std::ios_base::in | std::ios_base::out) override
+	{
+		if (which&std::ios_base::in)
+		{
+			pos_type pos = 0;
+			pos = seekoff(m_pos, off, dir);
+			return seekpos(pos, which);
+		}
+		return std::streambuf::seekoff(off, dir, which);
+	}
+
+	virtual pos_type seekpos(pos_type pos,
+		std::ios_base::openmode which = std::ios_base::in | std::ios_base::out) override
+	{
+		if (pos >= m_size)
+			return pos_type(off_type(-1));
+
+		if (which&std::ios_base::out)
+		{
+			if (pos < m_pos || pos >= m_pos + off_type(egptr() - pbase()))
+			{
+				overflow();
+				m_pos = pos;
+				setp(m_buf.data(), m_buf.data() + m_buf.size());
+			}
+			else
+			{
+				pbump(off_type(pos - pabs()));
+			}
+		}
+		else if (which&std::ios_base::in)
+		{
+			if (pos < m_pos || pos >= m_pos + off_type(epptr() - eback()))
+			{
+				m_pos = pos;
+				setg(m_buf.data(), m_buf.data(), m_buf.data());
+			}
+			else
+			{
+				gbump(off_type(pos - gabs()));
+			}
+		}
+		return pos;
+	}
+
+	virtual std::streamsize showmanyc() override
+	{
+		return m_size - pabs();
+	}
+
+	virtual int_type underflow() override
+	{
+		if (pptr() > pbase())
+			overflow();
+
+		off_type count = egptr() - eback();
+		pos_type next_pos=0;
+		if (count == 0 && eback() == m_buf.data())
+		{
+			setg(m_buf.data(), m_buf.data(), m_buf.data() + m_buf.size());
+			count = m_buf.size();
+		}
+		else
+		{
+			next_pos = m_pos + pos_type(count);
+		}
+		if (next_pos >= m_size)
+			return traits_type::eof();
+
+		count = std::min(count, m_size - next_pos);
+		m_binder.buffer = m_buf.data();
+		m_binder.buffer_length = count;
+		m_pos = next_pos;
+		int ret = mysql_stmt_fetch_column(m_stmt, &m_binder,  m_field, m_pos);
+		switch (ret)
+		{
+		case 0:
+			count = std::min(m_binder.buffer_length,  *m_binder.length);
+			setg(eback(), eback(), eback() + count);
+			return traits_type::to_int_type(*gptr());
+		case CR_NO_DATA:
+			return traits_type::eof();
+		default:
+			throw error(mysql_stmt_errno(m_stmt), mysql_stmt_error(m_stmt));
+		}
+	}
+
+	virtual int_type overflow(int_type ch = traits_type::eof()) override
+	{
+		if (pptr() != pbase())
+		{
+			size_t count = pptr() - pbase();
+			int ret = mysql_stmt_send_long_data(m_stmt, m_field, pbase(), count);
+			if (ret != 0)
+				throw error(mysql_stmt_errno(m_stmt), mysql_stmt_error(m_stmt));
+
+			//auto intersection = interval_intersection(m_pos, egptr() - eback(), m_pos, epptr() - pbase());
+			//if (intersection.first != intersection.second)
+			//{
+			//	commit(intersection.first, intersection.second);
+			//}
+
+			m_pos += count;
+			setp(pbase(), epptr());
+		}
+		if (!traits_type::eq_int_type(ch, traits_type::eof()))
+		{
+			char_type c = traits_type::to_char_type(ch);
+			if (m_pos >= m_size)
+				return traits_type::eof();
+			int ret = mysql_stmt_send_long_data(m_stmt, m_field, &c, 1);
+			if (ret != 0)
+				throw error(mysql_stmt_errno(m_stmt), mysql_stmt_error(m_stmt));
+
+			//auto intersection = interval_intersection(m_pos, egptr() - eback(), m_pos, 1);
+			//if (intersection.first != intersection.second)
+			//{
+			//	eback()[intersection.first - m_pos] = c;
+			//}
+			m_pos += 1;
+
+		}
+		return ch;
+	}
+
+	virtual int_type pbackfail(int_type c = traits_type::eof()) override
+	{
+		if (gptr() == 0
+			|| gptr() <= eback()
+			|| (!traits_type::eq_int_type(traits_type::eof(), c)
+				&& !traits_type::eq(traits_type::to_char_type(c), gptr()[-1])))
+		{
+			return (traits_type::eof());	// can't put back, fail
+		}
+		else
+		{	// back up one position and store put-back character
+			gbump(-1);
+			if (!traits_type::eq_int_type(traits_type::eof(), c))
+				*gptr() = traits_type::to_char_type(c);
+			return (traits_type::not_eof(c));
+		}
+	}
+
+
+
+private:
+	MYSQL_STMT* m_stmt;
+	binder m_binder;
+	int m_field;
+	std::vector<char> m_buf;
+	pos_type m_size;
+	pos_type m_pos;	//position in the input sequence
+
+	off_type seekoff(off_type position, off_type off, std::ios_base::seekdir dir)
+	{
+		off_type result = 0;
+		switch (dir)
+		{
+		case std::ios_base::beg:
+			result = off;
+			break;
+		case std::ios_base::cur:
+			result = position + off;
+			break;
+		case std::ios_base::end:
+			result = m_size - off;
+		}
+		if (result > m_size)
+			result = m_size;
+		return result;
+	}
+
+	pos_type gabs() const // absolute offset of input pointer in blob field
+	{
+		return m_pos + off_type(gptr() - eback());
+	}
+
+	pos_type pabs() const // absolute offset of output pointer in blob field
+	{
+		return m_pos + off_type(pptr() - pbase());
+	}
+};
+
+typedef std::function<void(std::ostream&)> blob_writer;
 
 class statement final
 {
@@ -336,6 +561,17 @@ public:
 		};
 	}
 
+	void bind_param(size_t index, const blob_writer& param)
+	{
+		m_binders[index].bind(NULL, 0, MYSQL_TYPE_LONG_BLOB);
+		m_binderAddins[index].m_after_fetch = [this, index, &param](const binder& b) {
+			blobbuf buf;
+			buf.open(m_stmt, index, b, std::ios::out);
+			std::ostream s(&buf);
+			param(s);
+		};
+	}
+
 	template<class Param>
 	void bind_param(size_t index, const Param& param)
 	{
@@ -396,7 +632,7 @@ public:
 				if(*b.is_null) value.clear();
 				else value.truncate(*b.length);
 			};
-			m_binders[index].bind(data, field->length, field->type);
+			m_binders[index].bind((void*)data, field->length, field->type);
 		}
 	}
 
@@ -404,7 +640,9 @@ public:
 	{
 		if(m_result)
 		{
-			m_binders[index].bind(NULL, 0, MYSQL_TYPE_LONG_BLOB);
+			MYSQL_FIELD* field = mysql_fetch_field_direct(m_result, (unsigned int)index);
+			assert(IS_LONGDATA(field->type));
+			m_binders[index].bind(NULL, 0, field->type);
 			m_binderAddins[index].m_after_fetch=[this, index, &value](const binder& b) {
 				unsigned long readed=0;
 				std::array<char, blob_buffer_size> buffer;
@@ -420,6 +658,20 @@ public:
 					value.write(buffer.data(), std::min(b.buffer_length, *b.length-b.offset));
 					readed+=bb.buffer_length;
 				}
+			};
+		}
+	}
+
+	void bind_field(size_t index, blobbuf&& value)
+	{
+		if (m_result)
+		{
+			MYSQL_FIELD* field = mysql_fetch_field_direct(m_result, (unsigned int)index);
+			assert(IS_LONGDATA(field->type));
+			m_binders[index].bind(NULL, 0, field->type);
+			m_binderAddins[index].m_after_fetch = [this, index, &value](const binder& b) {
+				if (*b.is_null) return;
+				value.open(m_stmt, index, b, std::ios::in);
 			};
 		}
 	}
