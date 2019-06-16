@@ -291,7 +291,7 @@ void TestMysql::test_fetch_stream()
 
 	try
 	{
-		db.query("SELECT Data from test_stream", [](qtl::mysql::blobbuf& buf) {
+		db.query("SELECT Data from test_stream", [](qtl::mysql::blobbuf&& buf) {
 			istream s(&buf);
 			string str;
 			while (!s.eof())

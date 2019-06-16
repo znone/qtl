@@ -172,6 +172,58 @@ db.query_multi("call test_proc",
 
 ```
 
+### 12. 异步调用数据库
+
+通过类async_connection可以异步调用数据库。所有的异步函数都需要提供一个回调函数接受操作完成后的结果。如果异步调用中发生错误，错误做为回调函数的参数返回给调用者。
+```
+qtl::mysql::async_connection connection;
+connection.open(ev, [&connection](const qtl::mysql::error& e) {
+	...
+});
+
+```
+
+异步调用在事件循环中完成。ev是事件循环对象。QTL只提出它对事件循环的需求，并不实现事件循环。QTL要求事件循环提供如下接口，该接口由用户代码实现：
+```
+class EventLoop
+{
+public:
+	// 把数据库连接添加到事件循环中
+	template<typename Connection>
+	qtl::event_handler* add(Connection* connection);
+	
+	// 在事件循环中添加一个超时任务
+	template<typename Handler>
+	qtl::event* set_timeout(const timeval& timeout, Handler&& handler);
+};
+```
+
+qtl::event是QTL中定义的一个事件项接口，用户代码同样应该实现它：
+```
+struct event
+{
+	// IO事件标志
+	enum io_flags
+	{
+		ef_read = 0x1,
+		ef_write = 0x2,
+		ef_exception = 0x4,
+		ef_timeout =0x8,
+		ev_all = ef_read | ef_write | ef_exception
+	};
+
+	virtual ~event() { }
+	// 设置IO处理器
+	virtual void set_io_handler(int flags, long timeout, std::function<void(int)>&&) = 0;
+	// 从事件循环中移除事件项
+	virtual void remove() = 0;
+	// 判断该事件项是否在等待IO中
+	virtual bool is_busying() = 0;
+};
+
+```
+数据库连接通常不是线程安全的。用户代码应该保证，一个连接只能同时由一个线程使用。
+
 ## 有关MySQL的说明
 
 访问MySQL时，包含头文件qtl_mysql.hpp。

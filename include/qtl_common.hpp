@@ -1,13 +1,19 @@
-#ifndef _MYDTL_DATABASE_H_
-#define _MYDTL_DATABASE_H_
+#ifndef _QTL_COMMON_H_
+#define _QTL_COMMON_H_
 
 #if defined(_MSC_VER)
 #if _MSC_VER<1800
-#error MYDTL need C++11 compiler
+#error QTL need C++11 compiler
 #endif //MSC
 #elif __cplusplus<201103L
-#error MYDTL need C++11 compiler
+#error QTL need C++11 compiler
 #endif //C++11
+
+#if _MSC_VER>=1800 && _MSC_VER<1900
+#define NOEXCEPT throw()
+#else
+#define NOEXCEPT noexcept
+#endif //NOEXCEPT
 
 #include <stdint.h>
 #include <string.h>
@@ -1167,4 +1173,4 @@ inline void execute(Command& command, uint64_t* affected, const Params& params, 
 
 }
 
-#endif //_MYDTL_DATABASE_H_
+#endif //_QTL_COMMON_H_
