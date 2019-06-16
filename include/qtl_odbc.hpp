@@ -33,7 +33,7 @@ public:
 	error(const object<Type>& h, SQLINTEGER code);
 	error(SQLINTEGER code, const char* msg) : m_errno(code), m_errmsg(msg) { }
 	SQLINTEGER code() const { return m_errno; }
-	operator bool() { return m_errno==SQL_SUCCESS || m_errno==SQL_SUCCESS_WITH_INFO; }
+	operator bool() { return m_errno!=SQL_SUCCESS || m_errno!=SQL_SUCCESS_WITH_INFO; }
 	virtual const char* what() const throw() override { return m_errmsg.data(); }
 private:
 	SQLINTEGER m_errno;

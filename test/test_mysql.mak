@@ -3,8 +3,8 @@ CC=g++
 PCH_HEADER=stdafx.h
 PCH=stdafx.h.gch
 OBJ=TestMysql.o md5.o
-CFLAGS=-g -D_DEBUG -O2 -I/usr/include/mysql -I/usr/local/include -I/usr/local/mysql/include 
-CXXFLAGS=-I../include -std=c++11
+CFLAGS=-g -D_DEBUG -O2 -I../include -I/usr/include/mysql -I/usr/local/include -I/usr/local/mysql/include 
+CXXFLAGS=-std=c++11
 LDFLAGS= -L/usr/local/lib -L/usr/local/mysql/lib -lcpptest -lmysqlclient
 
 all : $(TARGET)
