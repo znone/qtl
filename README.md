@@ -239,7 +239,7 @@ struct event
 | float | float |
 | double | double |
 | char<br>varchar | const char*<br>std::string |
-| blob<br>binary<br>text | qtl::const_blob_data<br>std::istream<br>qtl::mysql::blob_writer |
+| blob<br>binary<br>text | qtl::const_blob_data<br>std::istream<br>qtl::blob_writer |
 | date<br>time<br>datetime<br/>timestamp | qtl::mysql::time |
 
 blob_writer是一个函数，它的定义如下：
@@ -259,12 +259,12 @@ typedef std::function<void(std::ostream&)> blob_writer;
 | float | float |
 | double | double |
 | char<br>varchar | char[N]<br>std::array&lt;char, N&gt;<br>std::string<br>std::istream
-| blob<br>binary<br>text | qtl::blob_data<br>std::ostream<br>qtl::mysql::blobbuf
+| blob<br>binary<br>text | qtl::blob_data<br>std::ostream<br>qtl::blobbuf
 | date<br>time<br>datetime<br>timestamp | qtl::mysql::time |
 
 可以通过qtl::mysql::blobbuf读取BLOB字段的数据：
 ```C++
-void read_blob(qtl::mysql::blobbuf& buf) {
+void read_blob(qtl::blobbuf& buf) {
 	istream s(&buf);
 	...
 };
@@ -358,7 +358,7 @@ QTL不支持ODBC的输出参数。
 | CHAR<br>VARCHAR | const char*<br>std::string |
 | WCHAR<br>WVARCHAR | const wchar_t*<br>std::wstring |
 | BINARY | qtl::const_blob_data |
-| LONGVARBINARY | std::istream |
+| LONGVARBINARY | std::istream<br>qtl::blob_writer |
 | DATE | qtl::odbc::date |
 | TIME<br>UTCTIME | qtl::odbc::time |
 | TIMESTAMP<br>UTCDATETIME | qtl::odbc::datetime |
@@ -379,7 +379,7 @@ QTL不支持ODBC的输出参数。
 | CHAR<br>VARCHAR | char[N]<br>std::array&lt;char, N&gt;<br>std::string |
 | WCHAR<br>WVARCHAR | wchar_t[N]<br>std::array&lt;wchar_t, N&gt;<br>std::string |
 | BINARY | qtl::blob_data |
-| LONGVARBINARY | std::ostream |
+| LONGVARBINARY | std::ostream<br>qtl::blobbuf |
 | DATE | qtl::odbc::date |
 | TIME<br>UTCTIME | qtl::odbc::time |
 | TIMESTAMP<br>UTCDATETIME | qtl::odbc::datetime |

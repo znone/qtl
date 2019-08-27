@@ -263,7 +263,7 @@ void TestMysql::test_insert_stream()
 
 	try
 	{
-		qtl::mysql::blob_writer writer = [](std::ostream& s) {
+		qtl::blob_writer writer = [](std::ostream& s) {
 			for (size_t i = 0; i != 100; i++)
 			{
 				s << i << ": ";

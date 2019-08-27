@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <malloc.h>
 #include <limits.h>
+#include <stdint.h>
 
 #if !defined(_WIN32) || defined(__MINGW32__)
 #include <sys/time.h>
@@ -81,12 +82,62 @@ public:
 		}
 	}
 
-protected:
-	SQLHANDLE m_handle;
 	void verify_error(SQLINTEGER code) const
 	{
-		if(code<0)
-			throw odbc::error(*this, code); 
+		if (code < 0)
+			throw odbc::error(*this, code);
+	}
+
+protected:
+	SQLHANDLE m_handle;
+};
+
+class blobbuf : public qtl::blobbuf
+{
+public:
+	blobbuf() : m_stmt(nullptr), m_field(0)
+	{
+	}
+	blobbuf(const blobbuf&) = default;
+	blobbuf& operator=(const blobbuf&) = default;
+	virtual ~blobbuf() { overflow(); }
+
+	void open(object<SQL_HANDLE_STMT>* stmt, SQLSMALLINT field, std::ios_base::openmode mode)
+	{
+		if (m_stmt && m_field)
+		{
+			overflow();
+		}
+
+		assert(stmt != SQL_NULL_HANDLE);
+		m_stmt = stmt;
+		m_field = field;
+		m_size = INTMAX_MAX;
+		init_buffer(mode);
+	}
+
+private:
+	object<SQL_HANDLE_STMT>* m_stmt;
+	SQLSMALLINT m_field;
+
+protected:
+	virtual bool read_blob(char* buffer, off_type& count, pos_type position) override
+	{
+		SQLLEN indicator=0;
+		SQLRETURN ret = SQLGetData(m_stmt->handle(), m_field + 1, SQL_C_BINARY, buffer, count, const_cast<SQLLEN*>(&indicator));
+		if (ret != SQL_NO_DATA)
+		{
+			count = (indicator > count) || (indicator == SQL_NO_TOTAL) ?
+				count : indicator;
+			m_stmt->verify_error(ret);
+			return true;
+		}
+		else return false;
+	}
+
+	virtual void write_blob(const char* buffer, size_t count) override
+	{
+		m_stmt->verify_error(SQLPutData(m_stmt->handle(), (SQLPOINTER)buffer, count));
 	}
 };
 
@@ -281,6 +332,21 @@ public:
 		};
 	}
 
+	void bind_param(SQLUSMALLINT index, const blob_writer& param)
+	{
+		m_params[index].m_data = nullptr;
+		m_params[index].m_size = blob_buffer_size;
+		m_params[index].m_indicator = SQL_LEN_DATA_AT_EXEC(m_params[index].m_size);
+		verify_error(SQLBindParameter(m_handle, index + 1, SQL_PARAM_INPUT, SQL_C_BINARY, SQL_LONGVARBINARY,
+			INT_MAX, 0, &m_params[index], 0, &m_params[index].m_indicator));
+		m_params[index].m_after_fetch = [this, index, &param](const param_data& b) {
+			blobbuf buf;
+			buf.open(this, index, std::ios::out);
+			std::ostream s(&buf);
+			param(s);
+		};
+	}
+
 	void bind_field(SQLUSMALLINT index, bool&& v)
 	{
 		verify_error(SQLBindCol(m_handle, index+1, SQL_C_BIT, &v, 0, &m_params[index].m_indicator));
@@ -419,6 +485,15 @@ public:
 				v.write((const char*)p.m_data, n);
 				ret=SQLGetData(m_handle, index+1, SQL_C_BINARY, p.m_data, p.m_size, const_cast<SQLLEN*>(&p.m_indicator));
 			}
+		};
+	}
+
+	void bind_field(size_t index, blobbuf&& value)
+	{
+		m_params[index].m_data = nullptr;
+		m_params[index].m_size = 0;
+		m_params[index].m_after_fetch = [this, index, &value](const param_data& p) {
+			value.open(this, index, std::ios::in);
 		};
 	}
 

@@ -1116,6 +1116,217 @@ protected:
 	};
 };
 
+class blobbuf : public std::streambuf
+{
+public:
+	blobbuf() = default;
+	blobbuf(const blobbuf&) = default;
+	blobbuf& operator=(const blobbuf&) = default;
+	virtual ~blobbuf()
+	{
+		overflow();
+	}
+
+
+protected:
+	virtual pos_type seekoff(off_type off, std::ios_base::seekdir dir,
+		std::ios_base::openmode which = std::ios_base::in | std::ios_base::out) override
+	{
+		if (which&std::ios_base::in)
+		{
+			pos_type pos = 0;
+			pos = seekoff(m_pos, off, dir);
+			return seekpos(pos, which);
+		}
+		return std::streambuf::seekoff(off, dir, which);
+	}
+
+	virtual pos_type seekpos(pos_type pos,
+		std::ios_base::openmode which = std::ios_base::in | std::ios_base::out) override
+	{
+		if (pos >= m_size)
+			return pos_type(off_type(-1));
+
+		if (which&std::ios_base::out)
+		{
+			if (pos < m_pos || pos >= m_pos + off_type(egptr() - pbase()))
+			{
+				overflow();
+				m_pos = pos;
+				setp(m_buf.data(), m_buf.data() + m_buf.size());
+			}
+			else
+			{
+				pbump(off_type(pos - pabs()));
+			}
+		}
+		else if (which&std::ios_base::in)
+		{
+			if (pos < m_pos || pos >= m_pos + off_type(epptr() - eback()))
+			{
+				m_pos = pos;
+				setg(m_buf.data(), m_buf.data(), m_buf.data());
+			}
+			else
+			{
+				gbump(off_type(pos - gabs()));
+			}
+		}
+		return pos;
+	}
+
+	virtual std::streamsize showmanyc() override
+	{
+		return m_size - pabs();
+	}
+
+	virtual int_type underflow() override
+	{
+		if (pptr() > pbase())
+			overflow();
+
+		off_type count = egptr() - eback();
+		pos_type next_pos = 0;
+		if (count == 0 && eback() == m_buf.data())
+		{
+			setg(m_buf.data(), m_buf.data(), m_buf.data() + m_buf.size());
+			count = m_buf.size();
+		}
+		else
+		{
+			next_pos = m_pos + pos_type(count);
+		}
+		if (next_pos >= m_size)
+			return traits_type::eof();
+
+		count = std::min(count, m_size - next_pos);
+		m_pos = next_pos;
+		if (read_blob(m_buf.data(), count, m_pos))
+		{
+			setg(eback(), eback(), eback() + count);
+			return traits_type::to_int_type(*gptr());
+		}
+		else
+		{
+			return traits_type::eof();
+		}
+	}
+
+	virtual int_type overflow(int_type ch = traits_type::eof()) override
+	{
+		if (pptr() != pbase())
+		{
+			size_t count = pptr() - pbase();
+			write_blob(pbase(), count);
+
+			//auto intersection = interval_intersection(m_pos, egptr() - eback(), m_pos, epptr() - pbase());
+			//if (intersection.first != intersection.second)
+			//{
+			//	commit(intersection.first, intersection.second);
+			//}
+
+			m_pos += count;
+			setp(pbase(), epptr());
+		}
+		if (!traits_type::eq_int_type(ch, traits_type::eof()))
+		{
+			char_type c = traits_type::to_char_type(ch);
+			if (m_pos >= m_size)
+				return traits_type::eof();
+			write_blob(&c, 1);
+
+			//auto intersection = interval_intersection(m_pos, egptr() - eback(), m_pos, 1);
+			//if (intersection.first != intersection.second)
+			//{
+			//	eback()[intersection.first - m_pos] = c;
+			//}
+			m_pos += 1;
+
+		}
+		return ch;
+	}
+
+	virtual int_type pbackfail(int_type c = traits_type::eof()) override
+	{
+		if (gptr() == 0
+			|| gptr() <= eback()
+			|| (!traits_type::eq_int_type(traits_type::eof(), c)
+				&& !traits_type::eq(traits_type::to_char_type(c), gptr()[-1])))
+		{
+			return (traits_type::eof());	// can't put back, fail
+		}
+		else
+		{	// back up one position and store put-back character
+			gbump(-1);
+			if (!traits_type::eq_int_type(traits_type::eof(), c))
+				*gptr() = traits_type::to_char_type(c);
+			return (traits_type::not_eof(c));
+		}
+	}
+
+private:
+
+	off_type seekoff(off_type position, off_type off, std::ios_base::seekdir dir)
+	{
+		off_type result = 0;
+		switch (dir)
+		{
+		case std::ios_base::beg:
+			result = off;
+			break;
+		case std::ios_base::cur:
+			result = position + off;
+			break;
+		case std::ios_base::end:
+			result = m_size - off;
+		}
+		if (result > m_size)
+			result = m_size;
+		return result;
+	}
+
+	pos_type gabs() const // absolute offset of input pointer in blob field
+	{
+		return m_pos + off_type(gptr() - eback());
+	}
+
+	pos_type pabs() const // absolute offset of output pointer in blob field
+	{
+		return m_pos + off_type(pptr() - pbase());
+	}
+
+protected:
+	std::vector<char> m_buf;
+	pos_type m_size;
+	pos_type m_pos;	//position in the input sequence
+
+	virtual bool read_blob(char* buffer, off_type& count, pos_type position) = 0;
+	virtual void write_blob(const char* buffer, size_t count) = 0;
+
+	void init_buffer(std::ios_base::openmode mode)
+	{
+		size_t bufsize;
+		if (m_size > 0)
+			bufsize = std::min<size_t>(blob_buffer_size, m_size);
+		else
+			bufsize = blob_buffer_size;
+		if (mode&std::ios_base::in)
+		{
+			m_buf.resize(bufsize);
+			m_pos = 0;
+			setg(m_buf.data(), m_buf.data(), m_buf.data());
+		}
+		else if (mode&std::ios_base::out)
+		{
+			m_buf.resize(bufsize);
+			m_pos = 0;
+			setp(m_buf.data(), m_buf.data() + bufsize);
+		}
+	}
+};
+
+typedef std::function<void(std::ostream&)> blob_writer;
+
 template<typename Database>
 struct transaction
 {

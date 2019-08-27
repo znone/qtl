@@ -29,7 +29,7 @@ namespace qtl
 	template<>
 	inline void bind_record<qtl::odbc::statement, TestOdbcRecord>(qtl::odbc::statement& command, TestOdbcRecord&& v)
 	{
-		qtl::bind_field(command, 0, v.id);
+		qtl::bind_field(command, (size_t)0, v.id);
 		qtl::bind_field(command, 1, v.name);
 		qtl::bind_field(command, 2, v.create_time);
 	}
@@ -38,6 +38,7 @@ namespace qtl
 TestOdbc::TestOdbc() : m_db(m_env)
 {
 	m_db.open("DRIVER={SQL Server};SERVER=(local);UID=;PWD=;Trusted_Connection=yes;DATABASE=test");
+	//m_db.open("DRIVER={SQL Server};SERVER=(local);UID=;PWD=;Trusted_Connection=no;DATABASE=test;UID=sa;PWD=111111;");
 	cout<<"DBMS: "<<m_db.dbms_name()<<endl;
 	cout<<"SERVER: "<<m_db.server_name()<<endl;
 	cout<<"USER: "<<m_db.user_name()<<endl;
@@ -53,6 +54,8 @@ TestOdbc::TestOdbc() : m_db(m_env)
 	TEST_ADD(TestOdbc::test_iterator)
 	TEST_ADD(TestOdbc::test_insert_blob)
 	TEST_ADD(TestOdbc::test_select_blob)
+	TEST_ADD(TestOdbc::test_insert_stream)
+	TEST_ADD(TestOdbc::test_fetch_stream)
 }
 
 void TestOdbc::test_dual()
@@ -230,6 +233,62 @@ void TestOdbc::test_select_blob()
 		ASSERT_EXCEPTION(e);
 	}
 }
+void TestOdbc::test_insert_stream()
+{
+	try
+	{
+		qtl::blob_writer writer = [](std::ostream& s) {
+			for (size_t i = 0; i != 100; i++)
+			{
+				s << i << ": ";
+				for (size_t j = 0; j <= i; j++)
+					s << char('a' + j % 26);
+				s << endl;
+				for (size_t j = 0; j <= i; j++)
+					s << '-';
+				s << endl;
+			}
+		};
+		m_db.execute("INSERT INTO test_stream ([Data]) values(?)",
+			writer);
+		m_db.query_first("SELECT @@IDENTITY", id);
+	}
+	catch (qtl::odbc::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+}
+
+void TestOdbc::test_fetch_stream()
+{
+	try
+	{
+		m_db.query("SELECT Data from test_stream", [](qtl::odbc::blobbuf&& buf) {
+			istream s(&buf);
+			string str;
+			while (!s.eof())
+			{
+				getline(s, str);
+				cout << str << endl;
+			}
+			s.clear(ios_base::goodbit | ios_base::eofbit);
+			s.seekg(0, ios::beg);
+			if (s.good())
+			{
+				cout << "again:" << endl;
+				while (!s.eof())
+				{
+					getline(s, str);
+					cout << str << endl;
+				}
+			}
+		});
+	}
+	catch (qtl::odbc::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+}
 
 void TestOdbc::get_md5(std::istream& is, unsigned char* result)
 {
@@ -249,6 +308,7 @@ void TestOdbc::print_hex(const unsigned char* data, size_t n)
 	cout<<hex;
 	for(size_t i=0; i!=n; i++)
 		cout<<(data[i]&0xFF);
+	cout<<dec;
 }
 
 int main(int argc, char* argv[])
