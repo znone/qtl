@@ -32,9 +32,7 @@ namespace qtl
 	template<>
 	inline void bind_record<qtl::sqlite::statement, TestSqliteRecord>(qtl::sqlite::statement& command, TestSqliteRecord&& v)
 	{
-		qtl::bind_field(command, 0, v.id);
-		qtl::bind_field(command, 1, v.name);
-		qtl::bind_field(command, 2, v.create_time);
+		qtl::bind_fields(command, v.id, v.name, v.create_time);
 	}
 }
 
@@ -50,10 +48,12 @@ TestSqlite::TestSqlite()
 	TEST_ADD(TestSqlite::test_iterator)
 	TEST_ADD(TestSqlite::test_insert_blob)
 	TEST_ADD(TestSqlite::test_select_blob)
+	TEST_ADD(TestSqlite::test_any)
 }
 
-inline void TestSqlite::connect(qtl::sqlite::database& db)
+inline qtl::sqlite::database TestSqlite::connect()
 {
+	qtl::sqlite::database db;
 	try
 	{
 		db.open("test.db");
@@ -62,12 +62,12 @@ inline void TestSqlite::connect(qtl::sqlite::database& db)
 	{
 		ASSERT_EXCEPTION(e);
 	}
+	return db;
 }
 
 void TestSqlite::test_dual()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -85,8 +85,7 @@ void TestSqlite::test_dual()
 
 void TestSqlite::test_clear()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -100,8 +99,7 @@ void TestSqlite::test_clear()
 
 void TestSqlite::test_insert()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -117,8 +115,7 @@ void TestSqlite::test_insert()
 
 void TestSqlite::test_insert2()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -135,8 +132,7 @@ void TestSqlite::test_insert2()
 
 void TestSqlite::test_update()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -152,8 +148,7 @@ void TestSqlite::test_update()
 
 void TestSqlite::test_query()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -181,8 +176,7 @@ void TestSqlite::test_query()
 
 void TestSqlite::test_iterator()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -201,8 +195,7 @@ void TestSqlite::test_iterator()
 
 void TestSqlite::test_insert_blob()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -235,8 +228,7 @@ void TestSqlite::test_insert_blob()
 
 void TestSqlite::test_select_blob()
 {
-	qtl::sqlite::database db;
-	connect(db);
+	qtl::sqlite::database db = connect();
 
 	try
 	{
@@ -258,6 +250,30 @@ void TestSqlite::test_select_blob()
 	{
 		ASSERT_EXCEPTION(e);
 	}
+}
+
+void TestSqlite::test_any()
+{
+#ifdef _QTL_ENABLE_CPP17
+	qtl::sqlite::database db = connect();
+
+	try
+	{
+		db.query("select 0, 'hello world'",
+			[](const std::any& i, const std::any& str) {
+				cout << "0=\"" << std::any_cast<int64_t>(i) << "\", 'hello world'=\"" <<
+					std::any_cast<const std::string_view&>(str).data() << "\" \n";
+		});
+	}
+	catch (qtl::sqlite::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+	catch (std::bad_cast& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+#endif // C++17
 }
 
 void TestSqlite::get_md5(std::string& str, unsigned char* result)

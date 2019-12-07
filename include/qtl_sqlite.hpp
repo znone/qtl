@@ -224,6 +224,48 @@ public:
 		bind_field(index, value.data(), value.size());
 	}
 
+#ifdef _QTL_ENABLE_CPP17
+
+	template<typename T>
+	inline void bind_field(size_t index, std::optional<T>&& value)
+	{
+		int type = get_column_type(index);
+		if (type == SQLITE_NULL)
+		{
+			value.reset();
+		}
+		else
+		{
+			qtl::bind_field(*this, index, *value);
+		}
+	}
+
+	inline void bind_field(size_t index, std::any&& value)
+	{
+		int type = get_column_type(index);
+		switch(type)
+		{
+		case SQLITE_NULL:
+			value.reset();
+		case SQLITE_INTEGER:
+			value = sqlite3_column_int64(m_stmt, index);
+			break;
+		case SQLITE_FLOAT:
+			value = sqlite3_column_double(m_stmt, index);
+			break;
+		case SQLITE_TEXT:
+			value.emplace<std::string_view>((const char*)sqlite3_column_text(m_stmt, index), sqlite3_column_bytes(m_stmt, index));
+			break;
+		case SQLITE_BLOB:
+			value.emplace<const_blob_data>(sqlite3_column_text(m_stmt, index), sqlite3_column_bytes(m_stmt, index));
+			break;
+		default:
+			throw sqlite::error(SQLITE_MISMATCH);
+		}
+	}
+
+#endif // C++17
+
 	size_t find_field(const char* name) const
 	{
 		size_t count=get_column_count();

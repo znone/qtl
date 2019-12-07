@@ -1,11 +1,7 @@
 #ifndef _QTL_COMMON_H_
 #define _QTL_COMMON_H_
 
-#if defined(_MSC_VER)
-#if _MSC_VER<1800
-#error QTL need C++11 compiler
-#endif //MSC
-#elif __cplusplus<201103L
+#if __cplusplus<201103L && _MSC_VER<1800
 #error QTL need C++11 compiler
 #endif //C++11
 
@@ -24,6 +20,12 @@
 #include <vector>
 #include <functional>
 #include "apply_tuple.h"
+
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
+#define _QTL_ENABLE_CPP17
+#include <optional>
+#include <any>
+#endif // C++17
 
 namespace qtl
 {
@@ -145,6 +147,19 @@ inline void bind_param(Command& command, size_t index, const T& param)
 	command.bind_param(index, param);
 }
 
+#ifdef _QTL_ENABLE_CPP17
+
+template<typename Command, typename T>
+inline void bind_param(Command& command, size_t index, const std::optional<T>& param)
+{
+	if(param)
+		command.bind_param(index, *param);
+	else
+		command.bind_param(index, nullptr);
+}
+
+#endif // C++17
+
 // The order of the overloaded functions 'bind_field' is very important
 // The version with the most generic parameters is at the end
 
@@ -208,22 +223,6 @@ inline void bind_field(Command& command, size_t index, T& value)
 	bind_field(command, index, std::forward<T>(value));
 }
 
-template<typename FieldType, typename Command, typename BindType>
-inline void bind_field(Command& command, size_t index, BindType& value)
-{
-	FieldType temp=FieldType();
-	bind_field(command, index, temp);
-	value=static_cast<BindType>(temp);
-}
-
-template<typename FieldType, typename Command, typename BindType, typename CastFun>
-inline void bind_field(Command& command, size_t index, BindType& value, CastFun&& fun)
-{
-	FieldType temp=FieldType();
-	bind_field(command, index, temp);
-	fun(value, temp);
-}
-
 template<typename Command, typename T, typename=typename std::enable_if<!std::is_reference<T>::value>::type>
 inline void bind_field(Command& command, const char* name, T&& value)
 {
@@ -244,32 +243,14 @@ inline void bind_field(Command& command, const char* name, T& value)
 		bind_field(command, index, std::forward<T>(value));
 }
 
-template<typename FieldType, typename Command, typename BindType>
-inline void bind_field(Command& command, const char* name, BindType& value)
-{
-	size_t index=command.find_field(name);
-	if(index==-1)
-		value=BindType();
-	else
-		bind_field<FieldType>(command, index, value);
-}
-
-template<typename FieldType, typename Command, typename BindType, typename CastFun>
-inline void bind_field(Command& command, const char* name, BindType& value, CastFun&& fun)
-{
-	size_t index=command.find_field(name);
-	if(index==-1)
-		value=BindType();
-	else
-		bind_field<FieldType>(command, index, value, fun);
-}
-
 template<typename Command>
 inline void bind_field(Command& command, const char* name, char* value, size_t length)
 {
 	size_t index=command.find_field(name);
-	if(index==-1)
-		value[0]='\0';
+	if (index == -1)
+	{
+		if (length > 0) value[0] = '\0';
+	}
 	else
 		command.bind_field(index, value, length);
 }
@@ -278,8 +259,10 @@ template<typename Command>
 inline void bind_field(Command& command, const char* name, wchar_t* value, size_t length)
 {
 	size_t index=command.find_field(name);
-	if(index==-1)
-		value[0]='\0';
+	if (index == -1)
+	{
+		if (length > 0) value[0] = '\0';
+	}
 	else
 		command.bind_field(index, value, length);
 }
@@ -288,6 +271,47 @@ template<typename Command, typename T>
 inline void bind_field(Command& command, const char* name, std::reference_wrapper<T>&& value)
 {
 	return bind_field(command, value.get());
+}
+
+#ifdef _QTL_ENABLE_CPP17
+
+template<typename Command, typename T>
+inline void bind_field(Command& command, size_t index, std::optional<T>& value)
+{
+	value.emplace();
+	command.bind_field(index, std::forward<T>(value));
+}
+
+template<typename Command, typename T>
+inline void bind_field(Command& command, const char* name, std::optional<T>& value)
+{
+	size_t index = command.find_field(name);
+	if (index == -1)
+		value.reset();
+	else
+		bind_field(command, index, value);
+}
+
+#endif // C++17
+
+template<typename Command, typename... Fields>
+inline size_t bind_fields(Command& command, Fields&&... fields)
+{
+	return bind_fields(command, (size_t)0, std::forward<Fields>(fields)...);
+}
+
+template<typename Command, typename T>
+inline size_t bind_fields(Command& command, size_t index, T&& value)
+{
+	bind_field(command, index, std::forward<T>(value));
+	return index+1;
+}
+
+template<typename Command, typename T, typename... Other>
+inline size_t bind_fields(Command& command, size_t start, T&& value, Other&&... other)
+{
+	bind_field(command, start, std::forward<T>(value));
+	return bind_fields(command, start+1, std::forward<Other>(other)...);
 }
 
 namespace detail
@@ -835,39 +859,40 @@ class base_database
 {
 public:
 	template<typename Params>
-	void execute(const char* query_text, size_t text_length, const Params& params, uint64_t* affected=NULL)
+	base_database& execute(const char* query_text, size_t text_length, const Params& params, uint64_t* affected=NULL)
 	{
 		T* pThis=static_cast<T*>(this);
 		Command command=pThis->open_command(query_text, text_length);
 		command.execute(params);
 		if(affected) *affected=command.affetced_rows();
 		command.close();
+		return *this;
 	}
 	template<typename Params>
-	void execute(const char* query_text, const Params& params, uint64_t* affected=NULL)
+	base_database& execute(const char* query_text, const Params& params, uint64_t* affected=NULL)
 	{
 		return execute(query_text, strlen(query_text), params, affected);
 	}
 	template<typename Params>
-	void execute(const std::string& query_text, const Params& params, uint64_t* affected=NULL)
+	base_database& execute(const std::string& query_text, const Params& params, uint64_t* affected=NULL)
 	{
 		return execute(query_text.data(), query_text.length(), params, affected);
 	}
 
 	template<typename... Params>
-	void execute_direct(const char* query_text, size_t text_length, uint64_t* affected, const Params&... params)
+	base_database& execute_direct(const char* query_text, size_t text_length, uint64_t* affected, const Params&... params)
 	{
-		execute(query_text, text_length, std::forward_as_tuple(params...), affected);
+		return execute(query_text, text_length, std::forward_as_tuple(params...), affected);
 	}
 	template<typename... Params>
-	void execute_direct(const char* query_text, uint64_t* affected, const Params&... params)
+	base_database& execute_direct(const char* query_text, uint64_t* affected, const Params&... params)
 	{
-		execute(query_text, std::forward_as_tuple(params...), affected);
+		return execute(query_text, std::forward_as_tuple(params...), affected);
 	}
 	template<typename... Params>
-	void execute_direct(const std::string& query_text, uint64_t* affected, const Params&... params)
+	base_database& execute_direct(const std::string& query_text, uint64_t* affected, const Params&... params)
 	{
-		execute(query_text, std::forward_as_tuple(params...), affected);
+		return execute(query_text, std::forward_as_tuple(params...), affected);
 	}
 
 	template<typename Params>
@@ -947,7 +972,7 @@ public:
 	}
 
 	template<typename Params, typename Values, typename ValueProc>
-	void query_explicit(const char* query_text, size_t text_length, const Params& params, Values&& values, ValueProc&& proc)
+	base_database& query_explicit(const char* query_text, size_t text_length, const Params& params, Values&& values, ValueProc&& proc)
 	{
 		T* pThis=static_cast<T*>(this);
 		Command command=pThis->open_command(query_text, text_length);
@@ -957,152 +982,154 @@ public:
 			if(!detail::apply(std::forward<ValueProc>(proc), std::forward<Values>(values))) break;
 		}
 		command.close();
+		return *this;
 	}
 
 	template<typename Params, typename Values, typename ValueProc>
-	void query_explicit(const char* query_text, const Params& params, Values&& values, ValueProc&& proc)
+	base_database& query_explicit(const char* query_text, const Params& params, Values&& values, ValueProc&& proc)
 	{
-		query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), std::forward<ValueProc>(proc));
+		return query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Params, typename Values, typename ValueProc>
-	void query_explicit(const std::string& query_text, const Params& params, Values&& values, ValueProc&& proc)
+	base_database& query_explicit(const std::string& query_text, const Params& params, Values&& values, ValueProc&& proc)
 	{
-		query_explicit(query_text.data(), query_text.size(), params, std::forward<Values>(values), std::forward<ValueProc>(proc));
+		return query_explicit(query_text.data(), query_text.size(), params, std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Values, typename ValueProc>
-	void query_explicit(const char* query_text, size_t text_length, Values&& values, ValueProc&& proc)
+	base_database& query_explicit(const char* query_text, size_t text_length, Values&& values, ValueProc&& proc)
 	{
-		query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
+		return query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Values, typename ValueProc>
-	void query_explicit(const char* query_text, Values&& values, ValueProc&& proc)
+	base_database& query_explicit(const char* query_text, Values&& values, ValueProc&& proc)
 	{
-		query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
+		return query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 	template<typename Values, typename ValueProc>
-	void query_explicit(const std::string& query_text, Values&& values, ValueProc&& proc)
+	base_database& query_explicit(const std::string& query_text, Values&& values, ValueProc&& proc)
 	{
-		query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
+		return query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), std::forward<ValueProc>(proc));
 	}
 
 	template<typename Params, typename ValueProc>
-	void query(const char* query_text, size_t text_length, const Params& params, ValueProc&& proc)
+	base_database& query(const char* query_text, size_t text_length, const Params& params, ValueProc&& proc)
 	{
-		query_explicit(query_text, text_length, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
+		return query_explicit(query_text, text_length, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
 	}
 	template<typename Params, typename ValueProc>
-	void query(const char* query_text, const Params& params, ValueProc&& proc)
+	base_database& query(const char* query_text, const Params& params, ValueProc&& proc)
 	{
-		query_explicit(query_text, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
+		return query_explicit(query_text, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
 	}
 	template<typename Params, typename ValueProc>
-	void query(const std::string& query_text, const Params& params, ValueProc&& proc)
+	base_database& query(const std::string& query_text, const Params& params, ValueProc&& proc)
 	{
-		query_explicit(query_text, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
+		return query_explicit(query_text, params, detail::make_values(proc),  std::forward<ValueProc>(proc));
 	}
 	template<typename ValueProc>
-	void query(const char* query_text, size_t text_length, ValueProc&& proc)
+	base_database& query(const char* query_text, size_t text_length, ValueProc&& proc)
 	{
-		query_explicit(query_text, text_length, detail::make_values(proc),  std::forward<ValueProc>(proc));
+		return query_explicit(query_text, text_length, detail::make_values(proc),  std::forward<ValueProc>(proc));
 	}
 	template<typename ValueProc>
-	void query(const char* query_text, ValueProc&& proc)
+	base_database& query(const char* query_text, ValueProc&& proc)
 	{
-		query_explicit(query_text, detail::make_values(proc),  std::forward<ValueProc>(proc));
+		return query_explicit(query_text, detail::make_values(proc),  std::forward<ValueProc>(proc));
 	}
 	template<typename ValueProc>
-	void query(const std::string& query_text, ValueProc&& proc)
+	base_database& query(const std::string& query_text, ValueProc&& proc)
 	{
-		query_explicit(query_text, detail::make_values(proc), std::forward<ValueProc>(proc));
+		return query_explicit(query_text, detail::make_values(proc), std::forward<ValueProc>(proc));
 	}
 
 	template<typename Params, typename... ValueProc>
-	void query_multi_with_params(const char* query_text, size_t text_length, const Params& params, ValueProc&&... proc)
+	base_database& query_multi_with_params(const char* query_text, size_t text_length, const Params& params, ValueProc&&... proc)
 	{
 		T* pThis=static_cast<T*>(this);
 		Command command=pThis->open_command(query_text, text_length);
 		command.execute(params);
 		detail::fetch_command(command, std::forward<ValueProc>(proc)...);
 		command.close();
+		return *this;
 	}
 	template<typename Params, typename... ValueProc>
-	void query_multi_with_params(const char* query_text, const Params& params, ValueProc&&... proc)
+	base_database& query_multi_with_params(const char* query_text, const Params& params, ValueProc&&... proc)
 	{
-		query_multi_with_params(query_text, strlen(query_text), params, std::forward<ValueProc>(proc)...);
+		return query_multi_with_params(query_text, strlen(query_text), params, std::forward<ValueProc>(proc)...);
 	}
 	template<typename Params, typename... ValueProc>
-	void query_multi_with_params(const std::string& query_text, const Params& params, ValueProc&&... proc)
+	base_database& query_multi_with_params(const std::string& query_text, const Params& params, ValueProc&&... proc)
 	{
-		query_multi_with_params(query_text.data(), query_text.size(), params, std::forward<ValueProc>(proc)...);
+		return query_multi_with_params(query_text.data(), query_text.size(), params, std::forward<ValueProc>(proc)...);
 	}
 	template<typename... ValueProc>
-	void query_multi(const char* query_text, size_t text_length, ValueProc&&... proc)
+	base_database& query_multi(const char* query_text, size_t text_length, ValueProc&&... proc)
 	{
-		query_multi_with_params<std::tuple<>, ValueProc...>(query_text, text_length, std::make_tuple(), std::forward<ValueProc>(proc)...);
+		return query_multi_with_params<std::tuple<>, ValueProc...>(query_text, text_length, std::make_tuple(), std::forward<ValueProc>(proc)...);
 	}
 	template<typename... ValueProc>
-	void query_multi(const char* query_text, ValueProc&&... proc)
+	base_database& query_multi(const char* query_text, ValueProc&&... proc)
 	{
-		query_multi_with_params<std::tuple<>, ValueProc...>(query_text, strlen(query_text), std::make_tuple(), std::forward<ValueProc>(proc)...);
+		return query_multi_with_params<std::tuple<>, ValueProc...>(query_text, strlen(query_text), std::make_tuple(), std::forward<ValueProc>(proc)...);
 	}
 	template<typename... ValueProc>
-	void query_multi(const std::string& query_text, ValueProc&&... proc)
+	base_database& query_multi(const std::string& query_text, ValueProc&&... proc)
 	{
-		query_multi_with_params<std::tuple<>, ValueProc...>(query_text.data(), query_text.size(), std::make_tuple(), std::forward<ValueProc>(proc)...);
+		return query_multi_with_params<std::tuple<>, ValueProc...>(query_text.data(), query_text.size(), std::make_tuple(), std::forward<ValueProc>(proc)...);
 	}
 
 	template<typename Params, typename Values>
-	void query_first(const char* query_text, size_t text_length, const Params& params, Values&& values)
+	base_database& query_first(const char* query_text, size_t text_length, const Params& params, Values&& values)
 	{
-		query_explicit(query_text, text_length, params, std::forward<Values>(values), first_record());
+		return query_explicit(query_text, text_length, params, std::forward<Values>(values), first_record());
 	}
 
 	template<typename Params, typename Values>
-	void query_first(const char* query_text, const Params& params, Values&& values)
+	base_database& query_first(const char* query_text, const Params& params, Values&& values)
 	{
-		query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), first_record());
+		return query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), first_record());
 	}
 
 	template<typename Params, typename Values>
-	void query_first(const std::string& query_text, const Params& params, Values&& values)
+	base_database& query_first(const std::string& query_text, const Params& params, Values&& values)
 	{
-		query_explicit(query_text, params, values, first_record());
+		return query_explicit(query_text, params, values, first_record());
 	}
 
 	template<typename Values>
-	void query_first(const char* query_text, size_t text_length, Values&& values)
+	base_database& query_first(const char* query_text, size_t text_length, Values&& values)
 	{
-		query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), first_record());
+		return query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), first_record());
 	}
 
 	template<typename Values>
-	void query_first(const char* query_text, Values&& values)
+	base_database& query_first(const char* query_text, Values&& values)
 	{
-		query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), first_record());
+		return query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), first_record());
 	}
 
 	template<typename Values>
-	void query_first(const std::string& query_text, Values&& values)
+	base_database& query_first(const std::string& query_text, Values&& values)
 	{
-		query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), first_record());
+		return query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), first_record());
 	}
 
 	template<typename... Values>
-	void query_first_direct(const char* query_text, size_t text_length, Values&... values)
+	base_database& query_first_direct(const char* query_text, size_t text_length, Values&... values)
 	{
-		query_first(query_text, text_length, std::tie(values...));
+		return query_first(query_text, text_length, std::tie(values...));
 	}
 
 	template<typename... Values>
-	void query_first_direct(const char* query_text, Values&... values)
+	base_database& query_first_direct(const char* query_text, Values&... values)
 	{
-		query_first(query_text, std::tie(values...));
+		return query_first(query_text, std::tie(values...));
 	}
 
 	template<typename... Values>
-	void query_first_direct(const std::string& query_text, Values&... values)
+	base_database& query_first_direct(const std::string& query_text, Values&... values)
 	{
-		query_first(query_text, std::tie(values...));
+		return query_first(query_text, std::tie(values...));
 	}
 
 protected:

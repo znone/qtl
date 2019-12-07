@@ -26,10 +26,11 @@ private:
 	void test_iterator();
 	void test_insert_blob();
 	void test_select_blob();
+	void test_any();
 
 private:
 	int64_t id;
-	void connect(qtl::sqlite::database& db);
+	qtl::sqlite::database connect();
 	void get_md5(std::string& str, unsigned char* result);
 	void copy_stream(std::istream& is, std::ostream& os);
 	static void print_hex(const unsigned char* data, size_t n);

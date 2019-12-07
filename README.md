@@ -72,9 +72,7 @@ namespace qtl
 	template<>
 	inline void bind_record<qtl::mysql::statement, TestMysqlRecord>(qtl::mysql::statement& command, TestMysqlRecord&& v)
 	{
-		qtl::bind_field(command, 0, v.id);
-		qtl::bind_field(command, 1, v.name);
-		qtl::bind_field(command, 2, v.create_time);
+		qtl::bind_fields(command, v.id, v.name, v.create_time);
 	}
 }
 
@@ -109,8 +107,11 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 - is_null 字段是否为空
 - length 数据的实际长度
 - is_truncated 数据是否被截断
+ 
+#### 9. std::optional和std::any
+可以绑定字段到 C++17 中的 std::optional 和 std::any。当字段为null时，它们不包含任何内容，否则他们包含字段的值。
 
-#### 9. 支持标准库以外的字符串类型
+#### 10. 支持标准库以外的字符串类型
 除了标准库提供的std::string，另外其他库也提供了自己的字符串类，比如QT的QString，MFC/ATL的CString等。qtl也可以将字符字段绑定到这些类型上。扩展方法是：
 1. 为你的字符串类型，对 qtl::bind_string_helper 实现一个专门化。如果该字符串类型有符合标准库字符串语义的以下成员函数，可以跳过这一步：assign，clear，resize，data，size；
 2. 为你的字符串类型，对 qtl::bind_field 实现一个专门化；
@@ -130,7 +131,7 @@ namespace qtl
 
 ```
 
-#### 10. 在不同查询中复用同一数据结构
+#### 11. 在不同查询中复用同一数据结构
 通常希望复用结构，将其绑定到多个不同的查询的结果集，这时候 qtl::bind_record就不够用了。需要利用 qtl::custom_bind 实现不同的绑定函数才能实现这一需求。有如下绑定函数：
 
 ```C++
@@ -151,7 +152,7 @@ db->query_explicit("select * from test where id=?", id,
 ```
 qtl::bind_record不是唯一的方法。通过派生类也能实现类似的需求（qtl::record_with_tag）。
 
-#### 11.处理返回多个结果集的查询
+#### 12.处理返回多个结果集的查询
 有些查询语句会返回多个结果集。使用函数query执行这些查询只能得到第一个结果集。要处理所有结果集需要使用query_multi或query_multi_with_params。query_multi不会为没有结果集的查询调用回调函数。例如：
 ```SQL
 CREATE PROCEDURE test_proc()
@@ -172,7 +173,7 @@ db.query_multi("call test_proc",
 
 ```
 
-#### 12. 异步调用数据库
+#### 13. 异步调用数据库
 
 通过类async_connection可以异步调用数据库。所有的异步函数都需要提供一个回调函数接受操作完成后的结果。如果异步调用中发生错误，错误做为回调函数的参数返回给调用者。
 ```

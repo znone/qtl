@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <utility>
 #include <functional>
 #include <algorithm>
 #include <system_error>
@@ -83,8 +84,9 @@ public:
 	void bind(bool& v)
 	{
 		init();
-		buffer_type = MYSQL_TYPE_TINY;
+		buffer_type = MYSQL_TYPE_BIT;
 		buffer = &v;
+		buffer_length = 1;
 	}
 	void bind(int8_t& v)
 	{
@@ -275,6 +277,71 @@ protected:
 	}
 };
 
+struct time : public MYSQL_TIME
+{
+	time()
+	{
+		memset(this, 0, sizeof(MYSQL_TIME));
+		time_type = MYSQL_TIMESTAMP_NONE;
+	}
+	time(const struct tm& tm)
+	{
+		memset(this, 0, sizeof(MYSQL_TIME));
+		year = tm.tm_year + 1900;
+		month = tm.tm_mon + 1;
+		day = tm.tm_mday;
+		hour = tm.tm_hour;
+		minute = tm.tm_min;
+		second = tm.tm_sec;
+		time_type = MYSQL_TIMESTAMP_DATETIME;
+	}
+	time(time_t value)
+	{
+		struct tm tm;
+#if defined(_MSC_VER)
+		localtime_s(&tm, &value);
+#elif defined(_POSIX_VERSION)
+		localtime_r(&value, &tm);
+#else
+		tm = *localtime(&value);
+#endif
+		new(this)time(tm);
+	}
+	time(const time& src)
+	{
+		memcpy(this, &src, sizeof(MYSQL_TIME));
+	}
+	time& operator=(const time& src)
+	{
+		if (this != &src)
+			memcpy(this, &src, sizeof(MYSQL_TIME));
+		return *this;
+	}
+
+	static time now()
+	{
+		time_t value;
+		::time(&value);
+		return time(value);
+	}
+
+	time_t as_tm(struct tm& tm) const
+	{
+		tm.tm_year = year - 1900;
+		tm.tm_mon = month - 1;
+		tm.tm_mday = day;
+		tm.tm_hour = hour;
+		tm.tm_min = minute;
+		tm.tm_sec = second;
+		return mktime(&tm);
+	}
+	time_t get_time() const
+	{
+		struct tm tm;
+		return as_tm(tm);
+	}
+};
+
 class base_statement
 {
 protected:
@@ -409,7 +476,8 @@ public:
 		if (m_result)
 		{
 			bind(m_binders[index], std::forward<Type>(value));
-			m_binderAddins[index].m_after_fetch = if_null<typename std::remove_reference<Type>::type>(value);
+			m_binderAddins[index].m_after_fetch = 
+				if_null<typename std::remove_reference<Type>::type>(value);
 		}
 	}
 
@@ -518,6 +586,104 @@ public:
 		}
 	}
 
+#ifdef _QTL_ENABLE_CPP17
+
+	template<typename T>
+	inline void bind_field(size_t index, std::optional<T>&& value)
+	{
+		if (m_result)
+		{
+			qtl::bind_field(*this, index, *value);
+			binder_addin& addin = m_binderAddins[index];
+			auto fetch_fun = addin.m_after_fetch;
+			addin.m_after_fetch = [&addin, fetch_fun, &value](const binder& b) {
+				if (fetch_fun) fetch_fun(b);
+				if (*b.is_null) value.reset();
+			};
+		}
+	}
+
+	inline void bind_field(size_t index, std::any&& value)
+	{
+		if (m_result)
+		{
+			MYSQL_FIELD* field = mysql_fetch_field_direct(m_result, (unsigned int)index);
+			if (field == nullptr) throw_exception();
+			switch (field->type)
+			{
+			case MYSQL_TYPE_NULL:
+				value.reset();
+				break;
+			case MYSQL_TYPE_BIT:
+				value.emplace<bool>();
+				bind_field(index, std::any_cast<bool&>(value));
+				break;
+			case MYSQL_TYPE_TINY:
+				value.emplace<int8_t>();
+				bind_field(index, std::any_cast<int8_t&>(value));
+				break;
+			case MYSQL_TYPE_SHORT:
+				value.emplace<int16_t>();
+				bind_field(index, std::any_cast<int16_t&>(value));
+				break;
+			case MYSQL_TYPE_LONG:
+				value.emplace<int32_t>();
+				bind_field(index, std::any_cast<int32_t&>(value));
+				break;
+			case MYSQL_TYPE_LONGLONG:
+				value.emplace<int64_t>();
+				bind_field(index, std::any_cast<int64_t&>(value));
+				break;
+			case MYSQL_TYPE_FLOAT:
+				value.emplace<float>();
+				bind_field(index, std::any_cast<float&>(value));
+				break;
+			case MYSQL_TYPE_DOUBLE:
+				value.emplace<double>();
+				bind_field(index, std::any_cast<double&>(value));
+				break;
+			case MYSQL_TYPE_DATE:
+			case MYSQL_TYPE_TIME:
+			case MYSQL_TYPE_DATETIME:
+			case MYSQL_TYPE_TIMESTAMP:
+			case MYSQL_TYPE_TIMESTAMP2:
+			case MYSQL_TYPE_DATETIME2:
+			case MYSQL_TYPE_TIME2:
+				value.emplace<qtl::mysql::time>();
+				bind_field(index, std::any_cast<qtl::mysql::time&>(value));
+				break;
+			case MYSQL_TYPE_VARCHAR:
+			case MYSQL_TYPE_VAR_STRING:
+			case MYSQL_TYPE_STRING:
+			case MYSQL_TYPE_ENUM:
+			case MYSQL_TYPE_JSON:
+			case MYSQL_TYPE_DECIMAL:
+			case MYSQL_TYPE_NEWDECIMAL:
+			case MYSQL_TYPE_GEOMETRY:
+				value.emplace<std::string>();
+				bind_field(index, qtl::bind_string(std::any_cast<std::string&>(value)));
+				break;
+			case MYSQL_TYPE_TINY_BLOB:
+			case MYSQL_TYPE_MEDIUM_BLOB:
+			case MYSQL_TYPE_BLOB:
+			case MYSQL_TYPE_LONG_BLOB:
+				value.emplace<blobbuf>();
+				bind_field(index, std::forward<blobbuf>(std::any_cast<blobbuf&>(value)));
+				break;
+			default:
+				throw mysql::error(CR_UNSUPPORTED_PARAM_TYPE, "Unsupported field type");
+			}
+			binder_addin& addin = m_binderAddins[index];
+			auto fetch_fun = addin.m_after_fetch;
+			addin.m_after_fetch = [&addin, fetch_fun, &value](const binder& b) {
+				if (fetch_fun) fetch_fun(b);
+				if (*b.is_null) value.reset();
+			};
+		}
+	}
+
+#endif // C++17
+
 	void close()
 	{
 		if (m_result)
@@ -571,7 +737,7 @@ protected:
 	template<typename Value>
 	struct if_null
 	{
-		if_null(Value& value, Value&& def=Value()) : m_value(value), m_def(std::move(def)) { }
+		explicit if_null(Value& value, Value&& def=Value()) : m_value(value), m_def(std::move(def)) { }
 		void operator()(const binder& b)
 		{
 			if(*b.is_null) m_value=m_def;
@@ -1000,71 +1166,6 @@ public:
 
 #endif //MariaDB
 
-};
-
-struct time : public MYSQL_TIME
-{
-	time() 
-	{
-		memset(this, 0, sizeof(MYSQL_TIME));
-		time_type=MYSQL_TIMESTAMP_NONE;
-	}
-	time(const struct tm& tm)
-	{
-		memset(this, 0, sizeof(MYSQL_TIME));
-		year=tm.tm_year+1900;
-		month=tm.tm_mon+1;
-		day=tm.tm_mday;
-		hour=tm.tm_hour;
-		minute=tm.tm_min;
-		second=tm.tm_sec;
-		time_type=MYSQL_TIMESTAMP_DATETIME;
-	}
-	time(time_t value)
-	{
-		struct tm tm;
-#if defined(_MSC_VER)
-		localtime_s(&tm, &value);
-#elif defined(_POSIX_VERSION)
-		localtime_r(&value, &tm);
-#else
-		tm=*localtime(&value);
-#endif
-		new(this)time(tm);
-	}
-	time(const time& src)
-	{
-		memcpy(this, &src, sizeof(MYSQL_TIME));
-	}
-	time& operator=(const time& src)
-	{
-		if(this!=&src)
-			memcpy(this, &src, sizeof(MYSQL_TIME));
-		return *this;
-	}
-
-	static time now()
-	{
-		time_t value;
-		::time(&value);
-		return time(value);
-	}
-
-	time_t as_tm(struct tm& tm) const
-	{
-		tm.tm_year=year-1900;
-		tm.tm_mon=month-1;
-		tm.tm_mday=day;
-		tm.tm_hour=hour;
-		tm.tm_min=minute;
-		tm.tm_sec=second;
-		return mktime(&tm);
-	}
-	time_t get_time() const
-	{
-		struct tm tm;
-		return as_tm(tm);
-	}
 };
 
 #if MARIADB_VERSION_ID >= 100000

@@ -2,6 +2,7 @@
 #include "TestMysql.h"
 #include <fstream>
 #include <array>
+#include <iomanip>
 #include "md5.h"
 #include "../include/qtl_mysql.hpp"
 
@@ -30,9 +31,7 @@ namespace qtl
 	template<>
 	inline void bind_record<qtl::mysql::statement, TestMysqlRecord>(qtl::mysql::statement& command, TestMysqlRecord&& v)
 	{
-		qtl::bind_field(command, static_cast<size_t>(0), v.id);
-		qtl::bind_field(command, 1, v.name);
-		qtl::bind_field(command, 2, v.create_time);
+		qtl::bind_fields(command, v.id, v.name, v.create_time);
 	}
 }
 
@@ -48,7 +47,8 @@ TestMysql::TestMysql()
 	TEST_ADD(TestMysql::test_iterator)
 	TEST_ADD(TestMysql::test_insert_blob)
 	TEST_ADD(TestMysql::test_select_blob)
-	//TEST_ADD(TestMysql::test_insert_stream)
+	TEST_ADD(TestMysql::test_any)
+		//TEST_ADD(TestMysql::test_insert_stream)
 	//TEST_ADD(TestMysql::test_fetch_stream)
 }
 
@@ -329,6 +329,36 @@ void TestMysql::get_md5(std::istream& is, unsigned char* result)
 		MD5Update(&context, (unsigned char*)buffer.data(), (unsigned int)is.gcount());
 	}
 	MD5Final(result, &context);
+}
+
+void TestMysql::test_any()
+{
+#ifdef _QTL_ENABLE_CPP17
+
+	qtl::mysql::database db;
+	connect(db);
+
+	try
+	{
+		db.query("select 0, 'hello world', now() from dual",
+			[](const std::any& i, const std::any& str, const std::any& now) {
+				const qtl::mysql::time& time = std::any_cast<const qtl::mysql::time&>(now);
+				struct tm tm;
+				time.as_tm(tm);
+				cout << "0=\"" << std::any_cast<int32_t>(i) << "\", 'hello world'=\"" <<
+					std::any_cast<const std::string&>(str) << "\", now=\"" <<
+					std::put_time(&tm, "%c") << "\" \n";
+		});
+	}
+	catch (qtl::mysql::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+	catch (std::bad_cast& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+#endif
 }
 
 int main(int argc, char* argv[])
