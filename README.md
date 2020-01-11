@@ -1,33 +1,33 @@
 # QTL
-QTL是一个访问SQL数据库的C++库，目前支持MySQL、SQLite和ODBC。QTL是一个轻量级的库，只由头文件组成，不需要单独编译安装。QTL是对数据库原生客户端接口的薄封装，能提供友好使用方式的同时拥有接近于使用原生接口的性能。
-使用QTL需要支持C++11的编译器。
+QTL is a C ++ library for accessing SQL databases and currently supports MySQL, SQLite and ODBC. QTL is a lightweight library that consists of only header files and does not require separate compilation and installation. QTL is a thin encapsulation of the database's native client interface. It can provide a friendly way of using and has performance close to using the native interface.
+Using QTL requires a compiler that supports C++11.
 
-[![996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)
+The project [db2qtl](https://github.com/znone/db2qtl) can generate QTL code.
 
-## 使用方式
+## Usage
 
-### 打开数据库
+### Open database
 
 ```C++
 qtl::mysql::database db;
 db.open("localhost", "root", "", "test");
 ```
 
-### 执行查询
+### Execute SQL
 
 
-#### 1. 插入记录
+#### 1. Insert
 
 ```C++
 uint64_t id=db.insert("insert into test(Name, CreateTime) values(?, now())", "test_user");
 ```
 
-#### 2. 更新记录
+#### 2. Update
 
 ```C++
 db.execute_direct("update test set Name=? WHERE ID=?",  NULL, "other_user", id);
 ```
-#### 3. 更新多条记录：
+#### 3. Update multiple records
 
 ```C++
 uint64_t affected=0;
@@ -35,14 +35,14 @@ auto stmt=db.open_command("insert into test(Name, CreateTime) values(?, now())")
 qtl::execute(stmt, &affected, "second_user", "third_user");
 
 ```
-或者
+or
 ```C++
 stmt<<"second_user"<<"third_user";
 
 ```
 
-#### 4. 查询数据，以回调函数方式处理数据
-程序会一直遍历数据集，直到当回调函数返回false为止。如果回调函数无返回值，相当于返回true。
+#### 4. Query data and process data in callback function
+The program will traverse the data set until the callback function returns false. If the callback function has no return value, it is equivalent to returning true.
 
 ```C++
 db.query("select * from test where id=?", id, 
@@ -50,9 +50,9 @@ db.query("select * from test where id=?", id,
 		printf("ID=\"%d\", Name=\"%s\"\n", id, name.data());
 });
 ```
-当无法根据回调函数的参数推断字段类型时，请使用query_explicit代替query，手动指定数据类型进行查询。
+When the field type cannot be inferred based on the parameters of the callback function, please use query_explicit instead of query and manually specify the data type for query.
 
-#### 5. 也可以把数据绑定到结构上
+#### 5. Bind data to structures
 
 ```C++
 struct TestMysqlRecord
@@ -81,8 +81,8 @@ db.query("select * from test where id=?", id,
 		printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
 });
 ```
-#### 6. 用成员函数做为查询的回调函数
-当记录类有不带参数的成员函数时，可以直接用作查询的回调函数
+#### 6. Use member functions as query callback functions
+When the record class has a member function without parameters, it can be used directly as a query callback function
 ```C++
 struct TestMysqlRecord
 {
@@ -93,7 +93,7 @@ db.query("select * from test where id=?", id,
 	&TestMysqlRecord::print);
 ```
 
-#### 7. 以迭代器方式访问数据
+#### 7. Accessing data using iterator
 
 ```C++
 for(auto& record : db.result<TestMysqlRecord>("select * from test"))
@@ -101,23 +101,23 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 	printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
 }
 ```
-#### 8. 指示器
-可以用指示器（indicator）获取查询结果的更多信息。指示器包含以下成员：
-- data 存储字段的数据
-- is_null 字段是否为空
-- length 数据的实际长度
-- is_truncated 数据是否被截断
+#### 8. Indicator
+You can use the indicator to get more information about the query results. The indicator contains the following members:
+- data Store field data
+- is_null Whether the field is empty
+- length The actual length of the data
+- is_truncated Whether the data is truncated
  
-#### 9. std::optional和std::any
-可以绑定字段到 C++17 中的 std::optional 和 std::any。当字段为null时，它们不包含任何内容，否则他们包含字段的值。
+#### 9. std::optional and std::any
+You can bind fields to std::optional and std::any in C ++ 17. When fields are null, they contain nothing, otherwise they contain the value of the field.
 
-#### 10. 支持标准库以外的字符串类型
-除了标准库提供的std::string，另外其他库也提供了自己的字符串类，比如QT的QString，MFC/ATL的CString等。qtl也可以将字符字段绑定到这些类型上。扩展方法是：
-1. 为你的字符串类型，对 qtl::bind_string_helper 实现一个专门化。如果该字符串类型有符合标准库字符串语义的以下成员函数，可以跳过这一步：assign，clear，resize，data，size；
-2. 为你的字符串类型，对 qtl::bind_field 实现一个专门化；
+#### 10. Support for string types other than the standard library
+In addition to the std::string provided by the standard library, other libraries also provide their own string classes, such as QT's QString and MFC/ATL's CString. qtl can also bind character fields to these types. The extension method is:
+1. Implement a specialization for qtl::bind_string_helper for your string type. If this string type has the following member functions that conform to the standard library string semantics, you can skip this step: assign, clear, resize, data, size;
+2. Implement a specialization for qtl::bind_field for your string type;
 
-因为 QT 的 QByteArray 有兼容标准库的成员函数，所以绑定到 QByteArray 只需要一步：
-一般数据库不提供到 QChar/QString 的绑定，所以只能先用 QByteArray 接收数据，然后转换为 QString。
+Because QT's QByteArray has member functions compatible with the standard library, binding to QByteArray requires only one step:
+Generally, the database does not provide binding to QChar/QString, so you can only use QByteArray to receive data, and then convert it to QString.
 
 ```C++
 namespace qtl
@@ -131,8 +131,8 @@ namespace qtl
 
 ```
 
-#### 11. 在不同查询中复用同一数据结构
-通常希望复用结构，将其绑定到多个不同的查询的结果集，这时候 qtl::bind_record就不够用了。需要利用 qtl::custom_bind 实现不同的绑定函数才能实现这一需求。有如下绑定函数：
+#### 11. Reuse the same data structure in different queries
+Usually you want to reuse the structure and bind it to the result set of multiple different queries. At this time qtl::bind_record is not enough. You need to implement different binding functions with qtl::custom_bind to achieve this requirement. There are the following binding functions:
 
 ```C++
 void my_bind(TestMysqlRecord&& v, qtl::sqlite::statement& command)
@@ -142,7 +142,7 @@ void my_bind(TestMysqlRecord&& v, qtl::sqlite::statement& command)
 	qtl::bind_field(command, 2, v.create_time);
 }
 ```
-以下代码说明如何将其用于查询：
+The following code shows how to use it for queries:
 ```C++
 db->query_explicit("select * from test where id=?", id, 
 	qtl::custom_bind(TestMysqlRecord(), &my_bind),
@@ -150,10 +150,10 @@ db->query_explicit("select * from test where id=?", id,
 		printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
 	});
 ```
-qtl::bind_record不是唯一的方法。通过派生类也能实现类似的需求（qtl::record_with_tag）。
+qtl::bind_record is not the only method. A similar requirement can be achieved through derived classes (qtl::record_with_tag).
 
-#### 12.处理返回多个结果集的查询
-有些查询语句会返回多个结果集。使用函数query执行这些查询只能得到第一个结果集。要处理所有结果集需要使用query_multi或query_multi_with_params。query_multi不会为没有结果集的查询调用回调函数。例如：
+#### 12.Execute queries that return multiple result sets
+Some query statements return multiple result sets. Executing these queries using the function query will only get the first result set. To process all result sets you need to use query_multi or query_multi_with_params. query_multi does not call callback functions for queries without a result set. E.g:
 ```SQL
 CREATE PROCEDURE test_proc()
 BEGIN
@@ -173,9 +173,9 @@ db.query_multi("call test_proc",
 
 ```
 
-#### 13. 异步调用数据库
+#### 13. Access the database asynchronously
 
-通过类async_connection可以异步调用数据库。所有的异步函数都需要提供一个回调函数接受操作完成后的结果。如果异步调用中发生错误，错误做为回调函数的参数返回给调用者。
+The database can be called asynchronously through the class async_connection. All asynchronous functions need to provide a callback function to accept the result after the operation is completed. If an error occurs during an asynchronous call, the error is returned to the caller as a parameter to the callback function.
 ```
 qtl::mysql::async_connection connection;
 connection.open(ev, [&connection](const qtl::mysql::error& e) {
@@ -184,26 +184,26 @@ connection.open(ev, [&connection](const qtl::mysql::error& e) {
 
 ```
 
-异步调用在事件循环中完成。ev是事件循环对象。QTL只提出它对事件循环的需求，并不实现事件循环。QTL要求事件循环提供如下接口，该接口由用户代码实现：
+Asynchronous calls are done in the event loop. ev is an event loop object. QTL only proposes its requirements for the event loop and does not implement the event loop. QTL requires the event loop to provide the following interface, which is implemented by user code:
 ```
 class EventLoop
 {
 public:
-	// 把数据库连接添加到事件循环中
+	// Adding a database connection to the event loop
 	template<typename Connection>
 	qtl::event_handler* add(Connection* connection);
 	
-	// 在事件循环中添加一个超时任务
+	// Add a timeout task to the event loop
 	template<typename Handler>
 	qtl::event* set_timeout(const timeval& timeout, Handler&& handler);
 };
 ```
 
-qtl::event是QTL中定义的一个事件项接口，用户代码同样应该实现它：
+qtl::event is an event item interface defined in QTL, and user code should also implement it:
 ```
 struct event
 {
-	// IO事件标志
+	// IO event flag
 	enum io_flags
 	{
 		ef_read = 0x1,
@@ -214,24 +214,24 @@ struct event
 	};
 
 	virtual ~event() { }
-	// 设置IO处理器
+	// Setting up the IO processor
 	virtual void set_io_handler(int flags, long timeout, std::function<void(int)>&&) = 0;
-	// 从事件循环中移除事件项
+	// Remove event items from the event loop
 	virtual void remove() = 0;
-	// 判断该事件项是否在等待IO中
+	// Determine if the event item is waiting for IO
 	virtual bool is_busying() = 0;
 };
 
 ```
-数据库连接通常不是线程安全的。用户代码应该保证，一个连接只能同时由一个线程使用。
+Database connections are usually not thread-safe. User code should guarantee that a connection can only be used by one thread at a time.
 
-## 有关MySQL的说明
+## About MySQL
 
-访问MySQL时，包含头文件qtl_mysql.hpp。
+When accessing MySQL, include the header file qtl_mysql.hpp.
 
-### MySQL的参数数据绑定
+### MySQL parameter data binding
 
-| 参数类型 | C++类型 |
+| Parameter Type | C++ Types |
 | ------- | ------ |
 | tinyint | int8_t<br/>uint8_t |
 | smallint | int16_t<br/>uint16_t |
@@ -243,15 +243,15 @@ struct event
 | blob<br>binary<br>text | qtl::const_blob_data<br>std::istream<br>qtl::blob_writer |
 | date<br>time<br>datetime<br/>timestamp | qtl::mysql::time |
 
-blob_writer是一个函数，它的定义如下：
+blob_writer is a function, which is defined as follows:
 ```C++
 typedef std::function<void(std::ostream&)> blob_writer;
 ```
-该函数通过std::ostream类型的参数向BLOB字段写入数据。因为MySQL API的限制，该流基本只能向前移动，并不建议对该流随意调整写入位置。
+This function writes data to the BLOB field with a parameter of type std::ostream. Due to the limitations of the MySQL API, the stream can basically only move forward, and it is not recommended to adjust the write position at will for this stream.
 
-### MySQL的字段数据绑定
+### MySQL field data binding
 
-| 字段类型 | C++类型 |
+| Field Type | C++ Types |
 | ------- | ------ |
 | tinyint | int8_t<br/>uint8_t |
 | smallint | int16_t<br/>uint16_t |
@@ -263,34 +263,34 @@ typedef std::function<void(std::ostream&)> blob_writer;
 | blob<br>binary<br>text | qtl::blob_data<br>std::ostream<br>qtl::blobbuf
 | date<br>time<br>datetime<br>timestamp | qtl::mysql::time |
 
-可以通过qtl::mysql::blobbuf读取BLOB字段的数据：
+Data from BLOB fields can be read via qtl::mysql::blobbuf：
 ```C++
 void read_blob(qtl::blobbuf& buf) {
 	istream s(&buf);
 	...
 };
 ```
-因为MySQL API的限制，该流只能向前移动，并不建议对该流随意调整读取位置。
+Because of the limitations of the MySQL API, the stream can only move forward, and it is not recommended to adjust the read position at will for this stream.
 
-### MySQL相关的C++类
+### MySQL related C++ classes
 - qtl::mysql::database
-表示一个MySQL的数据库连接，程序主要通过这个类操纵数据库。
+Represents a MySQL database connection. The program mainly manipulates the database through this class.
 - qtl::mysql::statement
-表示一个MySQL的查询语句，实现查询相关操作。
+Represents a MySQL query statement to implement query-related operations.
 - qtl::mysql::error
-表示一个MySQL的错误，当操作出错时，抛出该类型的异常，包含错误信息。
+Represents a MySQL error. When an operation error occurs, an exception of this type is thrown, including an error message.
 - qtl::mysql::transaction
-表示一个MySQL的事务操作。
+Represents a MySQL transaction operation.
 - qtl::mysql::query_result
-表示一个MySQL的查询结果集，用于以迭代器方式遍历查询结果。
+Represents a MySQL query result set, used to iterate over query results in an iterator manner.
 
-## 有关SQLite的说明
+## About SQLite
 
-访问SQLite时，包含头文件qtl_sqlite.hpp。
+When accessing SQLite, include the header file qtl_sqlite.hpp.
 
-### SQLite的参数数据绑定
+### SQLite parameter data binding
 
-| 参数类型 | C++类型 |
+| Parameter Type | C++ Types |
 | ------- | ------ |
 | integer | int</br>int64_t |
 | real | double |
@@ -298,33 +298,33 @@ void read_blob(qtl::blobbuf& buf) {
 | blob | qtl::const_blob_data |
 
 
-### SQLite的字段数据绑定
+### SQLite field data binding
 
-| 字段类型 | C++类型 |
+| Field Type | C++ Types |
 | ------- | ------ |
 | integer | int</br>int64_t |
 | real | double |
 | text | char[N]<br>std::array&lt;char, N&gt;<br>std::string<br>std::wstring |
 | blob | qtl::const_blob_data<br>qtl::blob_data<br>std::ostream |
 
-当以qtl::const_blob_data接收blob数据时，直接返回SQLite给出的数据地址；当以qtl::blob_data接收blob数据时，数据被复制到qtl::blob_data指定的地址。
+When receiving blob data with qtl::const_blob_data, it directly returns the data address given by SQLite. When receiving blob data with qtl::blob_data, the data is copied to the address specified by qtl::blob_data.
 
-### SQLite相关的C++类
+### C ++ classes related to SQLite
 - qtl::sqlite::database
-表示一个SQLite的数据库连接，程序主要通过这个类操纵数据库。
+Represents a SQLite database connection. The program mainly manipulates the database through this class.
 - qtl::sqlite::statement
-表示一个SQLite的查询语句，实现查询相关操作。
+Represents a SQLite query statement to implement query-related operations.
 - qtl::sqlite::error
-表示一个SQLite的错误，当操作出错时，抛出该类型的异常，包含错误信息。
+Represents a SQLite error. When an operation error occurs, an exception of this type is thrown, including the error information.
 - qtl::sqlite::transaction
-表示一个SQLite的事务操作。
+Represents a SQLite transaction operation.
 - qtl::sqlite::query_result
-表示一个SQLite的查询结果集，用于以迭代器方式遍历查询结果。
+Represents a SQLite query result set, used to iterate over the query results in an iterator manner.
 
-### SQLite的Blob字段
+### Blob field in SQLite
 
-通过QTL，可以通过标准流的方式访问SQLite的BLOB字段。
-下面的代码，先用数字0-9向BLOB字段填充，然后再次读取字段内容并显示到屏幕。
+Through QTL, you can access the SQLite BLOB field through the standard stream.
+The following code first fills the BLOB field with the numbers 0-9, then reads the field content again and displays it to the screen.
 
 ```C++
 int64_t id=db->insert("INSERT INTO test_blob (Filename, Content, MD5) values(?, ?, ?)",
@@ -339,14 +339,14 @@ cout<<endl;
 
 ```
 
-## 有关ODBC的说明
+## About ODBC
 
-通过ODBC访问数据库时，包含头文件qtl_odbc.hpp。
-QTL不支持ODBC的输出参数。
+When accessing the database through ODBC, include the header file qtl_odbc.hpp.
+QTL does not support ODBC output parameters.
 
-### ODBC的参数数据绑定
+### ODBC parameter data binding
 
-| 参数类型 | C++类型 |
+| Parameter Type | C++ Types |
 | ------- | ------ |
 | TINYINT | int8_t<br>uint8_t |
 | SMALLINT | int16_t<br>uint16_t |
@@ -365,9 +365,9 @@ QTL不支持ODBC的输出参数。
 | TIMESTAMP<br>UTCDATETIME | qtl::odbc::datetime |
 | GUID | SQLGUID |
 
-### ODBC的字段数据绑定
+### ODBC field data binding
 
-| 字段类型 | C++类型 |
+| Field Type | C++ Types |
 | ------- | ------ |
 | TINYINT | int8_t<br>uint8_t |
 | SMALLINT | int16_t<br>uint16_t |
@@ -386,23 +386,23 @@ QTL不支持ODBC的输出参数。
 | TIMESTAMP<br>UTCDATETIME | qtl::odbc::datetime |
 | GUID | SQLGUID |
 
-### ODBC相关的C++类
+### ODBC related C ++ classes
 - qtl::odbc::database
-表示一个ODBC的数据库连接，程序主要通过这个类操纵数据库。
+Represents an ODBC database connection. The program mainly manipulates the database through this class.
 - qtl::odbc::statement
-表示一个ODBC的查询语句，实现查询相关操作。
+Represents an ODBC query statement to implement query-related operations.
 - qtl::odbc::error
-表示一个ODBC的错误，当操作出错时，抛出该类型的异常，包含错误信息。
+Represents an ODBC error. When an operation error occurs, an exception of this type is thrown, including an error message.
 - qtl::odbc::transaction
-表示一个ODBC的事务操作。
+Represents an ODBC transaction operation.
 - qtl::odbc::query_result
-表示一个ODBC的查询结果集，用于以迭代器方式遍历查询结果。
+Represents an ODBC query result set, used to iterate through the query results in an iterator manner.
 
-## 关于测试
+## About testing
 
-编译测试用例的第三方库需要另外下载。除了数据库相关的库外，测试用例用到了测试框架[CppTest](https://sourceforge.net/projects/cpptest/ "CppTest")。
+Third-party libraries for compiling test cases need to be downloaded separately. In addition to database-related libraries, test cases use a test framework[CppTest](https://sourceforge.net/projects/cpptest/ "CppTest")。
 
-测试用例所用的MySQL数据库如下：
+The MySQL database used in the test case is as follows:
 ```SQL
 CREATE TABLE test (
   ID int NOT NULL AUTO_INCREMENT,
@@ -419,5 +419,3 @@ CREATE TABLE test_blob (
   PRIMARY KEY (ID)
 );
 ```
-
-测试用例在 Visual Studio 2013 和 GCC 4.8 下测试通过。

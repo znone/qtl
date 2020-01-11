@@ -4,6 +4,7 @@
 #include "sqlite3.h"
 #include <algorithm>
 #include <array>
+#include <sstream>
 #include "qtl_common.hpp"
 
 namespace qtl

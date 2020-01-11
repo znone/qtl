@@ -294,12 +294,6 @@ inline void bind_field(Command& command, const char* name, std::optional<T>& val
 
 #endif // C++17
 
-template<typename Command, typename... Fields>
-inline size_t bind_fields(Command& command, Fields&&... fields)
-{
-	return bind_fields(command, (size_t)0, std::forward<Fields>(fields)...);
-}
-
 template<typename Command, typename T>
 inline size_t bind_fields(Command& command, size_t index, T&& value)
 {
@@ -312,6 +306,12 @@ inline size_t bind_fields(Command& command, size_t start, T&& value, Other&&... 
 {
 	bind_field(command, start, std::forward<T>(value));
 	return bind_fields(command, start+1, std::forward<Other>(other)...);
+}
+
+template<typename Command, typename... Fields>
+inline size_t bind_fields(Command& command, Fields&&... fields)
+{
+	return bind_fields(command, (size_t)0, std::forward<Fields>(fields)...);
 }
 
 namespace detail
