@@ -109,7 +109,7 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 - is_truncated 数据是否被截断
  
 #### 9. std::optional和std::any
-可以绑定字段到 C++17 中的 std::optional 和 std::any。当字段为null时，它们不包含任何内容，否则他们包含字段的值。
+可以绑定字段到 C++17 中的 std::optional 和 std::any。当字段为null时，它们不包含任何内容，否则它们包含字段的值。
 
 #### 10. 支持标准库以外的字符串类型
 除了标准库提供的std::string，另外其他库也提供了自己的字符串类，比如QT的QString，MFC/ATL的CString等。qtl也可以将字符字段绑定到这些类型上。扩展方法是：

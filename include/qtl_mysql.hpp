@@ -656,7 +656,9 @@ public:
 			case MYSQL_TYPE_VAR_STRING:
 			case MYSQL_TYPE_STRING:
 			case MYSQL_TYPE_ENUM:
+#if LIBMYSQL_VERSION_ID >= 50700
 			case MYSQL_TYPE_JSON:
+#endif 
 			case MYSQL_TYPE_DECIMAL:
 			case MYSQL_TYPE_NEWDECIMAL:
 			case MYSQL_TYPE_GEOMETRY:
@@ -779,24 +781,32 @@ public:
 			throw_exception();
 	}
 
-	template<typename Types>
-	void execute(const Types& params)
+	template<typename BindProc>
+	void execute_custom(BindProc&& bind_proc)
 	{
-		unsigned long count=mysql_stmt_param_count(m_stmt);
-		if(count>0)
+		unsigned long count = mysql_stmt_param_count(m_stmt);
+		if (count > 0)
 		{
 			resize_binders(count);
-			qtl::bind_params(*this, params);
-			if(mysql_stmt_bind_param(m_stmt, &m_binders.front()))
+			bind_proc(*this);
+			if (mysql_stmt_bind_param(m_stmt, &m_binders.front()))
 				throw_exception();
-			for(size_t i=0; i!=count; i++)
+			for (size_t i = 0; i != count; i++)
 			{
-				if(m_binderAddins[i].m_after_fetch)
+				if (m_binderAddins[i].m_after_fetch)
 					m_binderAddins[i].m_after_fetch(m_binders[i]);
 			}
 		}
-		if(mysql_stmt_execute(m_stmt)!=0)
+		if (mysql_stmt_execute(m_stmt) != 0)
 			throw_exception();
+	}
+
+	template<typename Types>
+	void execute(const Types& params)
+	{
+		execute_custom([&params](statement& stmt) {
+			qtl::bind_params(stmt, params);
+		});
 	}
 
 	template<typename Types>
