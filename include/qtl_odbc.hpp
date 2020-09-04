@@ -776,7 +776,7 @@ public:
 			SQLULEN column_size;
 			SQLSMALLINT digits;
 			SQLSMALLINT nullable;
-			verify_error(SQLDescribeCol(m_handle, i, field_name, sizeof(field_name), &name_length,
+			verify_error(SQLDescribeColA(m_handle, i, field_name, sizeof(field_name), &name_length,
 				&data_type, &column_size, &digits, &nullable));
 			if(strncmp((char*)field_name, name, name_length)==0)
 				return i;
@@ -949,7 +949,15 @@ public:
 
 	void set_attribute(SQLINTEGER attr, SQLINTEGER value)
 	{
-		verify_error(SQLSetConnectAttr(m_handle, attr, &value, 0));
+		verify_error(SQLSetConnectAttr(m_handle, attr, (SQLPOINTER)value, 0));
+	}
+	void set_attribute(SQLINTEGER attr, const char* value)
+	{
+		verify_error(SQLSetConnectAttr(m_handle, attr, (SQLPOINTER)value, SQL_NTS));
+	}
+	void set_attribute(SQLINTEGER attr, const std::string& value)
+	{
+		verify_error(SQLSetConnectAttr(m_handle, attr, (SQLPOINTER)value.data(), value.size()));
 	}
 	void get_attribute(SQLINTEGER attr, SQLINTEGER& value) const
 	{
