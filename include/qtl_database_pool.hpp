@@ -223,7 +223,7 @@ public:
 	void test_alive()
 	{
 		if (m_connections.empty())
-			return false;
+			return;
 		std::unique_lock<std::mutex> lock(m_pool_mutex);
 		auto it = m_connections.begin();
 		while (it != m_connections.end())

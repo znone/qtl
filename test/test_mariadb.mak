@@ -3,7 +3,7 @@ CC=g++
 PCH_HEADER=stdafx.h
 PCH=stdafx.h.gch
 OBJ=TestMariaDB.o
-CFLAGS=-g -D_DEBUG -O2 -I/usr/include/mariadb -I/usr/local/include 
+CFLAGS=-g -D_DEBUG -O2 -I/usr/include -I/usr/include/mariadb -I/usr/local/include -I/usr/local/include/mariadb 
 CXXFLAGS=-I../include -std=c++11
 LDFLAGS= -L/usr/local/lib -L/usr/local/mariadb/lib -lmariadb
 

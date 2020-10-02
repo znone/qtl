@@ -1582,7 +1582,7 @@ public:
 		int status  = mysql_close_start(m_mysql);
 		if (status)
 		{
-			wait_close(status, [this, handler]() {
+			wait_close(status, [this, handler]() mutable {
 				handler();
 				m_mysql = nullptr;
 			});
@@ -1781,7 +1781,7 @@ private:
 	void wait_close(int status, CloseHandler&& handler) NOEXCEPT
 	{
 		m_event_handler->set_io_handler(event_flags(status), mysql_get_timeout_value(m_mysql),
-			[this, handler](int flags) {
+			[this, handler](int flags) mutable {
 			MYSQL* ret = nullptr;
 			int status = mysql_close_cont(m_mysql, mysql_status(flags));
 			if (status)
@@ -1809,7 +1809,7 @@ private:
 	void wait_query(int status, int field_count, RowHandler&& row_handler, ResultHandler&& result_handler) NOEXCEPT
 	{
 		m_event_handler->set_io_handler(event_flags(status), mysql_get_timeout_value(m_mysql),
-			[this, field_count, row_handler, result_handler](int flags) {
+			[this, field_count, row_handler, result_handler](int flags) mutable {
 			MYSQL_RES* result = 0;
 			int status = mysql_store_result_cont(&result, m_mysql, mysql_status(flags));
 			if (status)

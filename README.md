@@ -224,6 +224,7 @@ struct event
 
 ```
 Database connections are usually not thread-safe. User code should guarantee that a connection can only be used by one thread at a time.
+For use this feature, GCC requires version 5 or higher.
 
 ## About MySQL
 
