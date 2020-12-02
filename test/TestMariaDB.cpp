@@ -82,6 +82,7 @@ void MariaDBTest::SimpleQuery()
 		if (e)
 		{
 			LogError(e);
+			Close();
 		}
 		else
 		{
@@ -93,20 +94,18 @@ void MariaDBTest::SimpleQuery()
 
 void MariaDBTest::Execute()
 {
-	_connection.simple_query("select * from test", 0, [](MYSQL_ROW row, int field_count) {
-		for (int i = 0; i != field_count; i++)
-			printf("%s\t", row[i]);
-		printf("\n");
-		return true;
-	}, [this](const error& e, size_t row_count) {
+	_connection.execute([this](const error& e, uint64_t affected) mutable {
 		if (e)
+		{
 			LogError(e);
+			Close();
+		}
 		else
 		{
-			printf("Total %lu rows.\n", row_count);
+			printf("Insert %llu records ok.\n", affected);
 			Query();
 		}
-	});
+	}, "insert into test(name, createtime, company) values(?, now(), ?)", 0, std::make_tuple("test name", "test company"));
 }
 
 void MariaDBTest::Query()
@@ -124,9 +123,14 @@ void MariaDBTest::Query()
 	}, [this](const error& e) {
 		printf("query has completed.\n");
 		if (e)
+		{
 			LogError(e);
+			Close();
+		}
 		else
+		{
 			MultiQuery();
+		}
 	});
 }
 
@@ -136,8 +140,7 @@ void MariaDBTest::MultiQuery()
 		[this](const error& e) {
 			if (e)
 				LogError(e);
-			else
-				Close();
+			Close();
 			
 	}, [](uint32_t i, const std::string& str) {
 		printf("0=\"%d\", 'hello world'=\"%s\"\n", i, str.data());

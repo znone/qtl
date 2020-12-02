@@ -35,7 +35,7 @@ public:
 	typedef NS_ASIO::io_context service_type;
 #endif // ASIO_VERSION
 
-	service() { }
+	service() NOEXCEPT { }
 	explicit service(int concurrency_hint) : _service(concurrency_hint) { }
 
 	void reset()
@@ -53,15 +53,15 @@ public:
 		_service.stop();
 	}
 
-	service_type& context() { return _service; }
+	service_type& context() NOEXCEPT { return _service; }
 
 private:
 
 	class event_item : public qtl::event
 	{
 	public:
-		event_item(service_type& service, qtl::socket_type fd)
-			: _strand(service), _socket(service, NS_ASIO::ip::tcp::v4(), fd), _timer(service), _busying(false)
+		event_item(service& service, qtl::socket_type fd)
+			: _service(service), _strand(service.context()), _socket(service.context(), NS_ASIO::ip::tcp::v4(), fd), _timer(service.context()), _busying(false)
 		{
 		}
 
@@ -122,9 +122,11 @@ private:
 
 		virtual void remove() override
 		{
-#if ASIO_VERSION < 101200 && (!defined(_WIN32) && _WIN32_WINNT >= 0x0603 )
+			if (_busying) return;
+#if ASIO_VERSION >= 101200 && (!defined(_WIN32) || _WIN32_WINNT >= 0x0603 )
 			_socket.release();
 #endif //Windows 8.1
+			_service.remove(this);
 		}
 		virtual bool is_busying() override
 		{
@@ -132,6 +134,7 @@ private:
 		}
 
 	private:
+		service& _service;
 		service_type::strand _strand;
 		NS_ASIO::ip::tcp::socket _socket;
 		NS_ASIO::steady_timer _timer;
@@ -143,14 +146,25 @@ public:
 	template<typename Connection>
 	event_item* add(Connection* connection)
 	{
-		event_item* item = new event_item(_service, connection->socket());
+		event_item* item = new event_item(*this, connection->socket());
+		std::lock_guard<std::mutex> lock(_mutex);
 		_events.push_back(std::unique_ptr<event_item>(item));
 		return item;
 	}
 
 private:
 	service_type _service;
+	std::mutex _mutex;
 	std::vector<std::unique_ptr<event_item>> _events;
+
+	void remove(event_item* item)
+	{
+		std::lock_guard<std::mutex> lock(_mutex);
+		auto it = std::find_if(_events.begin(), _events.end(), [item](std::unique_ptr<event_item>& v) {
+			return item==v.get();
+		});
+		if (it != _events.end()) _events.erase(it);
+	}
 };
 
 #if ASIO_VERSION < 101200

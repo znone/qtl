@@ -157,7 +157,7 @@ public:
 		Note: parameter affected must has default value.
 	*/
 	template<typename Params, typename ResultHandler>
-	void execute(ResultHandler&& handler, const char* query_text, size_t text_length, const Params& params)
+	void execute(ResultHandler handler, const char* query_text, size_t text_length, const Params& params)
 	{
 		T* pThis = static_cast<T*>(this);
 		pThis->open_command(query_text, text_length, [handler, params](const typename T::exception_type& e, std::shared_ptr<Command>& command) mutable {
@@ -186,30 +186,30 @@ public:
 		});
 	}
 	template<typename Params, typename ResultHandler>
-	void execute(ResultHandler&& handler, const char* query_text, const Params& params, uint64_t* affected = NULL)
+	void execute(ResultHandler handler, const char* query_text, const Params& params)
 	{
-		return execute(handler, query_text, strlen(query_text), params, affected);
+		return execute(std::forward<ResultHandler>(handler), query_text, strlen(query_text), params);
 	}
 	template<typename Params, typename ResultHandler>
-	void execute(ResultHandler&& handler, const std::string& query_text, const Params& params, uint64_t* affected = NULL)
+	void execute(ResultHandler handler, const std::string& query_text, const Params& params)
 	{
-		return execute(handler, query_text.data(), query_text.length(), params, affected);
+		return execute(std::forward<ResultHandler>(handler), query_text.data(), query_text.length(), params);
 	}
 
 	template<typename... Params, typename ResultHandler>
-	void execute_direct(ResultHandler&& handler, const char* query_text, size_t text_length, uint64_t* affected, const Params&... params)
+	void execute_direct(ResultHandler handler, const char* query_text, size_t text_length, const Params&... params)
 	{
-		execute(handler, query_text, text_length, std::forward_as_tuple(params...), affected);
+		execute(std::forward<ResultHandler>(handler), query_text, text_length, std::forward_as_tuple(params...));
 	}
 	template<typename... Params, typename ResultHandler>
-	void execute_direct(ResultHandler&& handler, const char* query_text, uint64_t* affected, const Params&... params)
+	void execute_direct(ResultHandler handler, const char* query_text, const Params&... params)
 	{
-		execute(handler, query_text, std::forward_as_tuple(params...), affected);
+		execute(std::forward<ResultHandler>(handler), query_text, std::forward_as_tuple(params...));
 	}
 	template<typename... Params, typename ResultHandler>
-	void execute_direct(ResultHandler&& handler, const std::string& query_text, uint64_t* affected, const Params&... params)
+	void execute_direct(ResultHandler handler, const std::string& query_text, const Params&... params)
 	{
-		execute(handler, query_text, query_text, std::forward_as_tuple(params...), affected);
+		execute(std::forward<ResultHandler>(handler), query_text, query_text, std::forward_as_tuple(params...));
 	}
 
 	/*
@@ -221,7 +221,7 @@ public:
 		Note: parameter insert_id must has default value.
 	*/
 	template<typename Params, typename ResultHandler>
-	void insert(ResultHandler&& handler, const char* query_text, size_t text_length, const Params& params)
+	void insert(ResultHandler handler, const char* query_text, size_t text_length, const Params& params)
 	{
 		T* pThis = static_cast<T*>(this);
 		pThis->open_command(query_text, text_length, [handler, params](const typename T::exception_type& e, std::shared_ptr<Command>& command) {
@@ -255,31 +255,31 @@ public:
 	template<typename Params, typename ResultHandler>
 	void insert(ResultHandler&& handler, const char* query_text, const Params& params)
 	{
-		insert(handler, query_text, strlen(query_text), params);
+		insert(std::forward<ResultHandler>(handler), query_text, strlen(query_text), params);
 	}
 
 	template<typename Params, typename ResultHandler>
 	void insert(ResultHandler&& handler, const std::string& query_text, const Params& params)
 	{
-		insert(handler, query_text.data(), query_text.length(), params);
+		insert(std::forward<ResultHandler>(handler), query_text.data(), query_text.length(), params);
 	}
 
 	template<typename... Params, typename ResultHandler>
 	void insert_direct(ResultHandler&& handler, const char* query_text, size_t text_length, const Params&... params)
 	{
-		insert(handler, query_text, text_length, std::forward_as_tuple(params...));
+		insert(std::forward<ResultHandler>(handler), query_text, text_length, std::forward_as_tuple(params...));
 	}
 
 	template<typename... Params, typename ResultHandler>
 	void insert_direct(ResultHandler&& handler, const char* query_text, const Params&... params)
 	{
-		insert(handler, query_text, strlen(query_text), std::forward_as_tuple(params...));
+		insert(std::forward<ResultHandler>(handler), query_text, strlen(query_text), std::forward_as_tuple(params...));
 	}
 
 	template<typename... Params, typename ResultHandler>
 	void insert_direct(ResultHandler&& handler, const std::string& query_text, const Params&... params)
 	{
-		insert(handler, query_text.data(), query_text.length(), std::forward_as_tuple(params...));
+		insert(std::forward<ResultHandler>(handler), query_text.data(), query_text.length(), std::forward_as_tuple(params...));
 	}
 
 	/*
