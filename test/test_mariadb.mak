@@ -3,9 +3,9 @@ CC=g++
 PCH_HEADER=stdafx.h
 PCH=stdafx.h.gch
 OBJ=TestMariaDB.o
-CFLAGS=-g -D_DEBUG -O2 -I/usr/include -I/usr/include/mariadb -I/usr/local/include -I/usr/local/include/mariadb 
+CFLAGS=-g -D_DEBUG -O2 -D_QTL_USE_MARIADB -I/usr/include $(shell mariadb_config --cflags)
 CXXFLAGS=-I../include -std=c++11
-LDFLAGS= -L/usr/local/lib -L/usr/local/mariadb/lib -lmariadb
+LDFLAGS= -L/usr/local/lib $(shell -L/usr/local/lib/mariadb/ -lmariadb)
 
 all : $(TARGET)
 

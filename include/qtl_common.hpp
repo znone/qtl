@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <algorithm>
 #include "apply_tuple.h"
 
 #if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
@@ -367,7 +368,7 @@ private:
 		typedef bool result_type;
 		result_type operator()(F&& f, arg_type&& v)
 		{
-			apply_tuple(std::forward<F>(f), std::forward<arg_type>(v));
+			qtl::detail::apply_tuple(std::forward<F>(f), std::forward<arg_type>(v));
 			return true;
 		}
 	};
@@ -377,7 +378,7 @@ private:
 		typedef Ret result_type;
 		result_type operator()(F&& f, arg_type&& v)
 		{
-			return apply_tuple(std::forward<F>(f), std::forward<arg_type>(v));
+			return qtl::detail::apply_tuple(std::forward<F>(f), std::forward<arg_type>(v));
 		}
 	};
 
@@ -593,7 +594,7 @@ inline void fetch_command(Command& command, ValueProc&& proc)
 	typedef decltype(values) values_type;
 	while(command.fetch(std::forward<values_type>(values)))
 	{
-		if(!detail::apply(std::forward<ValueProc>(proc), std::forward<values_type>(values))) 
+		if(!apply(std::forward<ValueProc>(proc), std::forward<values_type>(values)))
 			break;
 	}
 }
@@ -613,6 +614,7 @@ inline void fetch_command(Command& command, ValueProc&& proc, OtherProc&&... oth
 template<typename Command, typename T>
 struct params_binder
 {
+	enum { size = 1 };
 	inline void operator()(Command& command, const T& param) const
 	{
 		qtl::bind_param(command, 0, param);
@@ -622,6 +624,7 @@ struct params_binder
 template<typename Command, typename... Types>
 struct params_binder<Command, std::tuple<Types...>>
 {
+	enum { size = sizeof...(Types) };
 	void operator()(Command& command, const std::tuple<Types...>& params) const
 	{
 		(detail::bind_helper<Command, std::tuple_size<std::tuple<Types...>>::value, Types...>(command))(params);
@@ -631,6 +634,7 @@ struct params_binder<Command, std::tuple<Types...>>
 template<typename Command, typename Type1, typename Type2>
 struct params_binder<Command, std::pair<Type1, Type2>>
 {
+	enum { size = 2 };
 	void operator()(Command& command, std::pair<Type1, Type2>&& values) const
 	{
 		qtl::bind_param(command, 0, std::forward<Type1>(values.first));

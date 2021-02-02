@@ -411,13 +411,13 @@ public:
 		return count>0;;
 	}
 
-	int affetced_rows()
+	int affetced_rows() const
 	{
 		sqlite3* db=sqlite3_db_handle(m_stmt);
 		return db ? sqlite3_changes(db) : 0;
 	}
 
-	int64_t insert_id()
+	int64_t insert_id() const
 	{
 		sqlite3* db=sqlite3_db_handle(m_stmt);
 		return db ? sqlite3_last_insert_rowid(db) : 0;

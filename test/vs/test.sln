@@ -9,6 +9,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_odbc", "test_odbc\test
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_mariadb", "test_mariadb\test_mariadb.vcproj", "{2A539BFA-B934-4192-A029-524593AEC6B8}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_postgres", "test_postgres\test_postgres.vcproj", "{C8634EFC-2489-4F39-94EB-F54DC1ED2211}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -31,6 +33,10 @@ Global
 		{2A539BFA-B934-4192-A029-524593AEC6B8}.Debug|Win32.Build.0 = Debug|Win32
 		{2A539BFA-B934-4192-A029-524593AEC6B8}.Release|Win32.ActiveCfg = Release|Win32
 		{2A539BFA-B934-4192-A029-524593AEC6B8}.Release|Win32.Build.0 = Release|Win32
+		{C8634EFC-2489-4F39-94EB-F54DC1ED2211}.Debug|Win32.ActiveCfg = Debug|Win32
+		{C8634EFC-2489-4F39-94EB-F54DC1ED2211}.Debug|Win32.Build.0 = Debug|Win32
+		{C8634EFC-2489-4F39-94EB-F54DC1ED2211}.Release|Win32.ActiveCfg = Release|Win32
+		{C8634EFC-2489-4F39-94EB-F54DC1ED2211}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
