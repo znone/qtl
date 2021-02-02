@@ -1,5 +1,5 @@
 # QTL
-QTL is a C ++ library for accessing SQL databases and currently supports MySQL, SQLite and ODBC. QTL is a lightweight library that consists of only header files and does not require separate compilation and installation. QTL is a thin encapsulation of the database's native client interface. It can provide a friendly way of using and has performance close to using the native interface.
+QTL is a C ++ library for accessing SQL databases and currently supports MySQL, SQLite, PostgreSQL and ODBC. QTL is a lightweight library that consists of only header files and does not require separate compilation and installation. QTL is a thin encapsulation of the database's native client interface. It can provide a friendly way of using and has performance close to using the native interface.
 Using QTL requires a compiler that supports C++11.
 
 The project [db2qtl](https://github.com/znone/db2qtl) can generate QTL code.
@@ -224,7 +224,6 @@ struct event
 
 ```
 Database connections are usually not thread-safe. User code should guarantee that a connection can only be used by one thread at a time.
-For use this feature, GCC requires version 5 or higher.
 
 ## About MySQL
 
@@ -232,7 +231,7 @@ When accessing MySQL, include the header file qtl_mysql.hpp.
 
 ### MySQL parameter data binding
 
-| Parameter Type | C++ Types |
+| Parameter Types | C++ Types |
 | ------- | ------ |
 | tinyint | int8_t<br/>uint8_t |
 | smallint | int16_t<br/>uint16_t |
@@ -252,7 +251,7 @@ This function writes data to the BLOB field with a parameter of type std::ostrea
 
 ### MySQL field data binding
 
-| Field Type | C++ Types |
+| Field Types | C++ Types |
 | ------- | ------ |
 | tinyint | int8_t<br/>uint8_t |
 | smallint | int16_t<br/>uint16_t |
@@ -291,7 +290,7 @@ When accessing SQLite, include the header file qtl_sqlite.hpp.
 
 ### SQLite parameter data binding
 
-| Parameter Type | C++ Types |
+| Parameter Types | C++ Types |
 | ------- | ------ |
 | integer | int</br>int64_t |
 | real | double |
@@ -301,7 +300,7 @@ When accessing SQLite, include the header file qtl_sqlite.hpp.
 
 ### SQLite field data binding
 
-| Field Type | C++ Types |
+| Field Types | C++ Types |
 | ------- | ------ |
 | integer | int</br>int64_t |
 | real | double |
@@ -347,7 +346,7 @@ QTL does not support ODBC output parameters.
 
 ### ODBC parameter data binding
 
-| Parameter Type | C++ Types |
+| Parameter Types | C++ Types |
 | ------- | ------ |
 | TINYINT | int8_t<br>uint8_t |
 | SMALLINT | int16_t<br>uint16_t |
@@ -368,7 +367,7 @@ QTL does not support ODBC output parameters.
 
 ### ODBC field data binding
 
-| Field Type | C++ Types |
+| Field Types | C++ Types |
 | ------- | ------ |
 | TINYINT | int8_t<br>uint8_t |
 | SMALLINT | int16_t<br>uint16_t |
@@ -398,6 +397,52 @@ Represents an ODBC error. When an operation error occurs, an exception of this t
 Represents an ODBC transaction operation.
 - qtl::odbc::query_result
 Represents an ODBC query result set, used to iterate through the query results in an iterator manner.
+
+## About PostgreSQL
+When accessing PostgreSQL, include the header file qtl_postgres.hpp.
+On Linux, you need to install libpq, libecpg, and PostgreSQL Server development libraries.
+
+### PostgreSQL parameter data binding
+
+| Parameter Types | C++ Types |
+| ------- | ------ |
+| bool | bool |
+| integer | int32_t |
+| smallint | int16_t |
+| bigint | int64_t |
+| real | float |
+| DOUBLE | double |
+| text | const char*<br>std::string |
+| date | qtl::postgres::date |
+| timestamp | qtl::postgres::timestamp |
+| interval | qtl::postgres::interval |
+
+### PostgreSQL field data binding
+
+| Field Types | C++ Types |
+| ------- | ------ |
+| bool | bool |
+| integer | int32_t |
+| smallint | int16_t |
+| bigint | int64_t |
+| real | float |
+| DOUBLE | double |
+| text | char[N]<br>std::array&lt;char, N&gt;<br>std::string |
+| date | qtl::postgres::date |
+| timestamp | qtl::postgres::timestamp |
+| interval | qtl::postgres::interval |
+
+### C ++ classes related to PostgreSQL
+- qtl::postgres::database
+Represents a PostgreSQL database connection. The program mainly manipulates the database through this class.
+- qtl::postgres::statement
+Represents a PostgreSQL query statement to implement query-related operations.
+- qtl::postgres::error
+Represents a PostgreSQL error. When an operation error occurs, an exception of this type is thrown, including the error information.
+- qtl::postgres::transaction
+Represents a PostgreSQL transaction operation.
+- qtl::postgres::query_result
+Represents a PostgreSQL query result set, used to iterate over the query results in an iterator manner.
 
 ## About testing
 

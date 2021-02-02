@@ -2,6 +2,7 @@
 #define _TEST_SUITE_H_
 
 #include <exception>
+#include <cpptest.h>
 
 class TestSuite : public Test::Suite
 {

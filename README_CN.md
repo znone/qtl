@@ -224,7 +224,6 @@ struct event
 
 ```
 数据库连接通常不是线程安全的。用户代码应该保证，一个连接只能同时由一个线程使用。
-使用这项功能，GCC需要 5 或更高版本才行。
 
 ## 有关MySQL的说明
 
@@ -398,6 +397,52 @@ QTL不支持ODBC的输出参数。
 表示一个ODBC的事务操作。
 - qtl::odbc::query_result
 表示一个ODBC的查询结果集，用于以迭代器方式遍历查询结果。
+
+## 有关PostgreSQL的说明
+访问PostgreSQL数据库时，包含头文件qtl_postgres.hpp。
+在linux上，需要安装libpq、libecpg、PostgreSQL Server开发库。
+
+### PostgreSQL的参数数据绑定
+
+| 参数类型 | C++类型 |
+| ------- | ------ |
+| bool | bool |
+| integer | int32_t |
+| smallint | int16_t |
+| bigint | int64_t |
+| real | float |
+| DOUBLE | double |
+| text | const char*<br>std::string |
+| date | qtl::postgres::date |
+| timestamp | qtl::postgres::timestamp |
+| interval | qtl::postgres::interval |
+
+### PostgreSQL的字段数据绑定
+
+| 参数类型 | C++类型 |
+| ------- | ------ |
+| bool | bool |
+| integer | int32_t |
+| smallint | int16_t |
+| bigint | int64_t |
+| real | float |
+| DOUBLE | double |
+| text | char[N]<br>std::array&lt;char, N&gt;<br>std::string |
+| date | qtl::postgres::date |
+| timestamp | qtl::postgres::timestamp |
+| interval | qtl::postgres::interval |
+
+### ODBC相关的C++类
+- qtl::postgres::database
+表示一个PostgreSQL的数据库连接，程序主要通过这个类操纵数据库。
+- qtl::postgres::statement
+表示一个PostgreSQL的查询语句，实现查询相关操作。
+- qtl::postgres::error
+表示一个PostgreSQL的错误，当操作出错时，抛出该类型的异常，包含错误信息。
+- qtl::postgres::transaction
+表示一个PostgreSQL的事务操作。
+- qtl::postgres::query_result
+表示一个PostgreSQL的查询结果集，用于以迭代器方式遍历查询结果。
 
 ## 关于测试
 

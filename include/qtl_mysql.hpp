@@ -214,7 +214,7 @@ public:
 	virtual ~error() throw() { }
 	int code() const throw() { return m_error; }
 	operator bool() const { return m_error != 0;  }
-	virtual const char* what() const throw() override { return m_errmsg.data(); }
+	virtual const char* what() const NOEXCEPT override { return m_errmsg.data(); }
 private:
 	unsigned int m_error;
 	std::string m_errmsg;

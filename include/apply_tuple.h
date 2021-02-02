@@ -6,6 +6,12 @@
 #include <type_traits>
 #include <utility>
 
+namespace qtl
+{
+
+namespace detail
+{
+
 #if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
 
 template <class F, class Tuple>
@@ -57,5 +63,9 @@ inline auto apply_tuple(F&& f, T&& t)
 }
 
 #endif // C++17
+
+}
+
+}
 
 #endif //_APPLY_TUPLE_H_

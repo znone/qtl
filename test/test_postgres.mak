@@ -1,18 +1,18 @@
-TARGET=test_mysql
+TARGET=test_postgres
 CC=g++
 PCH_HEADER=stdafx.h
 PCH=stdafx.h.gch
-OBJ=TestMysql.o md5.o
-CFLAGS=-g -D_DEBUG -O2 -I../include -I/usr/include -I/usr/local/include $(shell mysql_config --cflags) 
-CXXFLAGS=-std=c++11
-LDFLAGS= -L/usr/local/lib -lcpptest $(shell mysql_config --libs)
+OBJ=TestPostgres.o md5.o
+CFLAGS=-g -D_DEBUG -O2-I/usr/include -I/usr/local/include -I$(shell pg_config --includedir) -I$(shell pg_config --includedir-server )
+CXXFLAGS= -I../include -std=c++11
+LDFLAGS= -L$(shell pg_config --libdir) -lcpptest -lpq -lpgtypes
 
 all : $(TARGET)
 
 $(PCH) : $(PCH_HEADER)
 	$(CC) $(CFLAGS) $(CXXFLAGS) -x c++-header -o $@ $<
 
-TestMysql.o : TestMysql.cpp TestMysql.h $(PCH)
+TestPostgres.o : TestPostgres.cpp $(PCH)
 	$(CC) -c $(CFLAGS) $(CXXFLAGS) -o $@ $< 
 	
 md5.o : md5.c md5.h
