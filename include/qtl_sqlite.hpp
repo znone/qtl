@@ -574,6 +574,9 @@ public:
 	void swap( blobbuf& other )
 	{
 		std::swap(m_blob, other.m_blob);
+		std::swap(m_inbuf, other.m_inbuf);
+		std::swap(m_outbuf, other.m_outbuf);
+		std::swap(m_size, other.m_size);
 		std::swap(m_inpos, other.m_inpos);
 		std::swap(m_outpos, other.m_outpos);
 
@@ -649,7 +652,7 @@ public:
 		return this;
 	}
 
-	std::streamoff blob_size() const { return std::streamoff(m_size); }
+	std::streamoff size() const { return std::streamoff(m_size); }
 
 	void flush() 
 	{
@@ -783,7 +786,7 @@ protected:
 			if(m_outpos>=m_size)
 				return traits_type::eof();
 			if(sqlite3_blob_write(m_blob, &c, 1, m_outpos)!=SQLITE_OK)
-				traits_type::eof();
+				return traits_type::eof();
 			auto intersection = interval_intersection(m_inpos, egptr()-eback(), m_outpos, 1);
 			if(intersection.first!=intersection.second)
 			{

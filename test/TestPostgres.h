@@ -24,6 +24,8 @@ private:
 	void test_update();
 	void test_insert2();
 	void test_iterator();
+	void test_insert_blob();
+	void test_select_blob();
 	void test_any();
 
 private:

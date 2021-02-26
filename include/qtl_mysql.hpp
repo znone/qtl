@@ -245,6 +245,13 @@ public:
 		init_buffer(mode);
 	}
 
+	void swap(blobbuf& other)
+	{
+		std::swap(m_stmt, other.m_stmt);
+		std::swap(m_binder, other.m_binder);
+		std::swap(m_field, other.m_field);
+		qtl::blobbuf::swap(other);
+	}
 
 private:
 	MYSQL_STMT* m_stmt;

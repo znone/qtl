@@ -40,13 +40,15 @@ TestPostgres::TestPostgres()
 {
 	this->id = 0;
 	TEST_ADD(TestPostgres::test_dual)
-		TEST_ADD(TestPostgres::test_clear)
-		TEST_ADD(TestPostgres::test_insert)
-		TEST_ADD(TestPostgres::test_select)
-		TEST_ADD(TestPostgres::test_update)
-		TEST_ADD(TestPostgres::test_insert2)
-		TEST_ADD(TestPostgres::test_iterator)
-		TEST_ADD(TestPostgres::test_any)
+	TEST_ADD(TestPostgres::test_clear)
+	TEST_ADD(TestPostgres::test_insert)
+	TEST_ADD(TestPostgres::test_select)
+	TEST_ADD(TestPostgres::test_update)
+	TEST_ADD(TestPostgres::test_insert2)
+	TEST_ADD(TestPostgres::test_iterator)
+	TEST_ADD(TestPostgres::test_insert_blob)
+	TEST_ADD(TestPostgres::test_select_blob)
+	TEST_ADD(TestPostgres::test_any)
 }
 
 inline void TestPostgres::connect(qtl::postgres::database& db)
@@ -188,6 +190,89 @@ void TestPostgres::test_iterator()
 	}
 }
 
+void hex_string(char* dest, const unsigned char* bytes, size_t count)
+{
+	for (size_t i = 0; i != count; i++)
+	{
+		sprintf(&dest[i * 2], "%02X", bytes[i] & 0xFF);
+	}
+}
+
+void TestPostgres::test_insert_blob()
+{
+	qtl::postgres::database db;
+	connect(db);
+
+	try
+	{
+#ifdef _WIN32
+		const char filename[] = "C:\\windows\\explorer.exe";
+#else
+		const char filename[] = "/bin/sh";
+#endif //_WIN32
+		qtl::postgres::transaction trans(db);
+		qtl::postgres::large_object content = qtl::postgres::large_object::load(db.handle(), filename);
+		TEST_ASSERT_MSG(content.oid()>0, "Cannot open test file.");
+		fstream fs(filename, ios::binary | ios::in);
+		unsigned char md5[16] = { 0 };
+		char md5_hex[33] = { 0 };
+		get_md5(fs, md5);
+		hex_string(md5_hex, md5, sizeof(md5));
+		printf("MD5 of file %s: %s.\n", filename, md5_hex);
+
+		db.simple_execute("DELETE FROM test_blob");
+
+		fs.clear();
+		fs.seekg(0, ios::beg);
+		db.query_first("INSERT INTO test_blob (filename, content, md5) values($1, $2, $3) returning id",
+			forward_as_tuple(filename, content, qtl::const_blob_data(md5, sizeof(md5))), id);
+		content.close();
+		trans.commit();
+	}
+	catch (qtl::postgres::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+}
+
+void TestPostgres::test_select_blob()
+{
+	qtl::postgres::database db;
+	connect(db);
+
+	try
+	{
+		const char dest_file[] = "explorer.exe";
+
+		unsigned char md5[16] = { 0 };
+		std::string source_file;
+		qtl::postgres::transaction trans(db);
+		qtl::postgres::large_object content;
+		qtl::const_blob_data md5_value;
+		db.query_first("SELECT filename, content, md5 FROM test_blob WHERE id=$1", make_tuple(id),
+			forward_as_tuple(source_file, content, qtl::blob_data(md5, sizeof(md5))));
+		if (content.is_open())
+		{
+			content.save(dest_file);
+			ifstream fs(dest_file, ios::binary | ios::in);
+			TEST_ASSERT_MSG(fs, "Cannot open test file.");
+			char md5_hex[33] = { 0 };
+			hex_string(md5_hex, md5, sizeof(md5));
+			printf("MD5 of file %s stored in database: %s.\n", source_file.data(), md5_hex);
+			fs.clear();
+			fs.seekg(0, ios::beg);
+			get_md5(fs, md5);
+			hex_string(md5_hex, md5, sizeof(md5));
+			printf("MD5 of file %s: %s.\n", dest_file, md5_hex);
+			content.close();
+		}
+	}
+	catch (qtl::postgres::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+}
+
 void TestPostgres::test_any()
 {
 #ifdef _QTL_ENABLE_CPP17
@@ -216,6 +301,19 @@ void TestPostgres::test_any()
 		ASSERT_EXCEPTION(e);
 	}
 #endif
+}
+
+void TestPostgres::get_md5(std::istream& is, unsigned char* result)
+{
+	std::array<char, 64 * 1024> buffer;
+	MD5_CTX context;
+	MD5Init(&context);
+	while (!is.eof())
+	{
+		is.read(&buffer.front(), buffer.size());
+		MD5Update(&context, (unsigned char*)buffer.data(), (unsigned int)is.gcount());
+	}
+	MD5Final(result, &context);
 }
 
 int main(int argc, char* argv[])

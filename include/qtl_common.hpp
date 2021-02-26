@@ -1158,6 +1158,14 @@ public:
 		overflow();
 	}
 
+	void swap(blobbuf& other)
+	{
+		std::swap(m_buf, other.m_buf);
+		std::swap(m_size, other.m_size);
+		std::swap(m_pos, other.m_pos);
+
+		std::streambuf::swap(other);
+	}
 
 protected:
 	virtual pos_type seekoff(off_type off, std::ios_base::seekdir dir,

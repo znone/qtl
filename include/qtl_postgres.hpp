@@ -11,11 +11,13 @@
 #include <sstream>
 #include <chrono>
 #include <algorithm>
+#include <assert.h>
 #include "qtl_common.hpp"
 
 #define FRONTEND
 
 #include <libpq-fe.h>
+#include <libpq/libpq-fs.h>
 #include <pgtypes_error.h>
 #include <pgtypes_interval.h>
 #include <pgtypes_timestamp.h>
@@ -52,6 +54,12 @@ extern "C"
 #ifdef printf
 #undef printf
 #endif
+#ifdef rename
+#undef rename
+#endif
+#ifdef unlink
+#undef unlink
+#endif
 
 namespace qtl
 {
@@ -63,7 +71,7 @@ namespace detail
 
 	inline int16_t ntoh(int16_t v)
 	{
-		return ntohs(v);
+		return static_cast<int16_t>(ntohs(v));
 	}
 	inline uint16_t ntoh(uint16_t v)
 	{
@@ -71,7 +79,7 @@ namespace detail
 	}
 	inline int32_t ntoh(int32_t v)
 	{
-		return ntohl(v);
+		return static_cast<int32_t>(ntohl(v));
 	}
 	inline uint32_t ntoh(uint32_t v)
 	{
@@ -99,7 +107,7 @@ namespace detail
 
 	inline int16_t hton(int16_t v)
 	{
-		return htons(v);
+		return static_cast<int16_t>(htons(v));
 	}
 	inline uint16_t hton(uint16_t v)
 	{
@@ -107,7 +115,7 @@ namespace detail
 	}
 	inline int32_t hton(int32_t v)
 	{
-		return htonl(v);
+		return static_cast<int32_t>(htonl(v));
 	}
 	inline uint32_t hton(uint32_t v)
 	{
@@ -532,6 +540,150 @@ inline bool operator!=(const numeric& a, const numeric& b)
 	return a.compare(b) != 0;
 }
 
+class large_object : public qtl::blobbuf
+{
+public:
+	large_object() : m_conn(nullptr), m_id(InvalidOid), m_fd(-1) { }
+	large_object(PGconn* conn, Oid loid, std::ios_base::openmode mode)
+	{
+		open(conn, loid, mode);
+	}
+	large_object(const large_object&) = delete;
+	large_object(large_object&& src)
+	{
+		swap(src);
+		src.m_conn = nullptr;
+		src.m_fd = -1;
+	}
+	~large_object()
+	{
+		close();
+	}
+
+	static large_object create(PGconn* conn, Oid loid = InvalidOid)
+	{
+		Oid oid = lo_create(conn, loid);
+		if (oid == InvalidOid)
+			throw error(conn);
+		return large_object(conn, oid, std::ios::in|std::ios::out|std::ios::binary);
+	}
+	static large_object load(PGconn* conn, const char* filename, Oid loid = InvalidOid)
+	{
+		Oid oid = lo_import_with_oid(conn, filename, loid);
+		if (oid == InvalidOid)
+			throw error(conn);
+		return large_object(conn, oid, std::ios::in | std::ios::out | std::ios::binary);
+	}
+	void save(const char* filename) const
+	{
+		if (lo_export(m_conn, m_id, filename) < 0)
+			throw error(m_conn);
+	}
+
+	void unlink()
+	{
+		close();
+		if (lo_unlink(m_conn, m_id) < 0)
+			throw error(m_conn);
+	}
+
+	large_object& operator=(const large_object&) = delete;
+	large_object& operator=(large_object&& src)
+	{
+		if (this != &src)
+		{
+			swap(src);
+			src.close();
+		}
+		return *this;
+	}
+	bool is_open() const { return m_fd >= 0; }
+	Oid oid() const { return m_id; }
+
+	void open(PGconn* conn, Oid loid, std::ios_base::openmode mode)
+	{
+		int lomode = 0;
+		if (mode&std::ios_base::in)
+			lomode |= INV_READ;
+		if (mode&std::ios_base::out)
+			lomode |= INV_WRITE;
+		m_conn = conn;
+		m_id = loid;
+		m_fd = lo_open(m_conn, loid, lomode);
+		if (m_fd < 0)
+			throw error(m_conn);
+
+		m_size = size();
+		init_buffer(mode);
+		if (mode&std::ios_base::trunc)
+		{
+			if (lo_truncate(m_conn, m_fd, 0) < 0)
+				throw error(m_conn);
+		}
+	}
+
+	void close()
+	{
+		if (m_fd >= 0)
+		{
+			overflow();
+			if (lo_close(m_conn, m_fd) < 0)
+				throw error(m_conn);
+			m_fd = -1;
+		}
+	}
+
+	void flush()
+	{
+		if (m_fd >= 0)
+			overflow();
+	}
+
+	size_t size() const
+	{
+		pg_int64 size = 0;
+		if (m_fd >= 0)
+		{
+			pg_int64 org = lo_tell64(m_conn, m_fd);
+			size = lo_lseek64(m_conn, m_fd, 0, SEEK_END);
+			lo_lseek64(m_conn, m_fd, org, SEEK_SET);
+		}
+		return size;
+	}
+
+	void resize(size_t n)
+	{
+		if (m_fd >= 0 && lo_truncate64(m_conn, m_fd, n) < 0)
+			throw error(m_conn);
+	}
+
+	void swap(large_object& other)
+	{
+		std::swap(m_conn, other.m_conn);
+		std::swap(m_id, other.m_id);
+		std::swap(m_fd, other.m_fd);
+		qtl::blobbuf::swap(other);
+	}
+
+protected:
+	enum { default_buffer_size = 4096 };
+
+	virtual bool read_blob(char* buffer, off_type& count, pos_type position) override
+	{
+		return lo_lseek64(m_conn, m_fd, position, SEEK_SET) >= 0 && lo_read(m_conn, m_fd, buffer, count) > 0;
+	}
+	virtual void write_blob(const char* buffer, size_t count) override
+	{
+		if (lo_write(m_conn, m_fd, buffer, count) < 0)
+			throw error(m_conn);
+	}
+
+private:
+	PGconn* m_conn;
+	Oid m_id;
+	int m_fd;
+};
+
 /*
 	template<typename T>
 	struct oid_traits
@@ -696,6 +848,61 @@ template<> struct object_traits<date> : public base_object_traits<date, DATEOID>
 	}
 };
 
+template<> struct object_traits<qtl::const_blob_data> : public base_object_traits<qtl::const_blob_data, BYTEAOID>
+{
+	static value_type get(const char* data, size_t n)
+	{
+		return qtl::const_blob_data(data, n);
+	}
+	static std::pair<const char*, size_t> data(const qtl::const_blob_data& v, std::vector<char>& data)
+	{
+		assert(v.size <= UINT32_MAX);
+		return std::make_pair(static_cast<const char*>(v.data), v.size);
+	}
+};
+
+template<> struct object_traits<qtl::blob_data> : public base_object_traits<qtl::blob_data, BYTEAOID>
+{
+	static void get(qtl::blob_data& value, const char* data, size_t n)
+	{
+		if (value.size < n)
+			throw std::out_of_range("no enough buffer to receive blob data.");
+		memcpy(value.data, data, n);
+	}
+	static std::pair<const char*, size_t> data(const qtl::blob_data& v, std::vector<char>& data)
+	{
+		assert(v.size <= UINT32_MAX);
+		return std::make_pair(static_cast<char*>(v.data), v.size);
+	}
+};
+
+template<> struct object_traits<std::vector<uint8_t>> : public base_object_traits<std::vector<uint8_t>, BYTEAOID>
+{
+	static value_type get(const char* data, size_t n)
+	{
+		const uint8_t* begin = reinterpret_cast<const uint8_t*>(data);
+		return std::vector<uint8_t>(begin, begin+n);
+	}
+	static std::pair<const char*, size_t> data(const std::vector<uint8_t>& v, std::vector<char>& data)
+	{
+		assert(v.size() <= UINT32_MAX);
+		return std::make_pair(reinterpret_cast<const char*>(v.data()), v.size());
+	}
+};
+
+template<> struct object_traits<large_object> : public base_object_traits<large_object, OIDOID>
+{
+	static value_type get(PGconn* conn, const char* data, size_t n)
+	{
+		Oid oid = object_traits<int32_t>::get(data, n);
+		return large_object(conn, oid, std::ios::in | std::ios::out | std::ios::binary);
+	}
+	static std::pair<const char*, size_t> data(const large_object& v, std::vector<char>& data)
+	{
+		return object_traits<int32_t>::data(v.oid(), data);
+	}
+};
+
 struct binder
 {
 	binder() = default;
@@ -725,6 +932,22 @@ struct binder
 			throw std::bad_cast();
 
 		return object_traits<T>::get(m_value, m_length);
+	}
+	template<typename T>
+	T get(PGconn* conn)
+	{
+		if (!object_traits<T>::is_match(m_type))
+			throw std::bad_cast();
+
+		return object_traits<T>::get(conn, m_value, m_length);
+	}
+	template<typename T>
+	void get(T& v)
+	{
+		if (!object_traits<T>::is_match(m_type))
+			throw std::bad_cast();
+
+		return object_traits<T>::get(v, m_value, m_length);
 	}
 
 	void bind(std::nullptr_t)
@@ -983,6 +1206,15 @@ public:
 		}
 	}
 
+	void bind_field(size_t index, large_object&& value)
+	{
+		value = m_binders[index].get<large_object>(m_conn);
+	}
+	void bind_field(size_t index, blob_data&& value)
+	{
+		m_binders[index].get(value);
+	}
+
 protected:
 	PGconn* m_conn;
 	result m_res;
@@ -1089,7 +1321,7 @@ public:
 		if (!PQsetSingleRowMode(m_conn))
 			throw error(m_conn);
 		m_res = PQgetResult(m_conn);
-		verify_error<PGRES_COMMAND_OK, PGRES_SINGLE_TUPLE>();
+		verify_error<PGRES_COMMAND_OK, PGRES_SINGLE_TUPLE, PGRES_TUPLES_OK>();
 	}
 
 	template<typename Types>
