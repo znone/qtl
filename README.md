@@ -411,13 +411,14 @@ On Linux, you need to install libpq, libecpg, and PostgreSQL Server development 
 | smallint | int16_t |
 | bigint | int64_t |
 | real | float |
-| DOUBLE | double |
+| double | double |
 | text | const char*<br>std::string |
 | bytea | qtl::const_blob_data<br>std::vector<uint8_t> |
 | oid | qtl::postgres::large_object |
 | date | qtl::postgres::date |
 | timestamp | qtl::postgres::timestamp |
 | interval | qtl::postgres::interval |
+| array | std::vector |
 
 ### PostgreSQL field data binding
 
@@ -428,13 +429,14 @@ On Linux, you need to install libpq, libecpg, and PostgreSQL Server development 
 | smallint | int16_t |
 | bigint | int64_t |
 | real | float |
-| DOUBLE | double |
+| double | double |
 | text | char[N]<br>std::array&lt;char, N&gt;<br>std::string |
 | bytea | qtl::const_blob_data<br>qtl::blob_data<br>std::vector<uint8_t> |
 | oid | qtl::postgres::large_object |
 | date | qtl::postgres::date |
 | timestamp | qtl::postgres::timestamp |
 | interval | qtl::postgres::interval |
+| array | std::vector |
 
 ### C ++ classes related to PostgreSQL
 - qtl::postgres::database
