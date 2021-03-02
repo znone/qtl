@@ -418,7 +418,8 @@ QTL不支持ODBC的输出参数。
 | date | qtl::postgres::date |
 | timestamp | qtl::postgres::timestamp |
 | interval | qtl::postgres::interval |
-| array | std::vector |
+| array | std::vector<br>std::array<br>T[N] |
+| composite types | std::tuple<br>std::pair |
 
 ### PostgreSQL的字段数据绑定
 
@@ -436,7 +437,8 @@ QTL不支持ODBC的输出参数。
 | date | qtl::postgres::date |
 | timestamp | qtl::postgres::timestamp |
 | interval | qtl::postgres::interval |
-| array | std::vector |
+| array | std::vector<br>std::array<br>T[N] |
+| composite types | std::tuple<br>std::pair |
 
 ### ODBC相关的C++类
 - qtl::postgres::database

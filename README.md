@@ -418,7 +418,8 @@ On Linux, you need to install libpq, libecpg, and PostgreSQL Server development 
 | date | qtl::postgres::date |
 | timestamp | qtl::postgres::timestamp |
 | interval | qtl::postgres::interval |
-| array | std::vector |
+| array | std::vector<br>std::array<br>T[N] |
+| composite types | std::tuple<br>std::pair |
 
 ### PostgreSQL field data binding
 
@@ -436,7 +437,8 @@ On Linux, you need to install libpq, libecpg, and PostgreSQL Server development 
 | date | qtl::postgres::date |
 | timestamp | qtl::postgres::timestamp |
 | interval | qtl::postgres::interval |
-| array | std::vector |
+| array | std::vector<br>std::array<br>T[N] |
+| composite types | std::tuple<br>std::pair |
 
 ### C ++ classes related to PostgreSQL
 - qtl::postgres::database

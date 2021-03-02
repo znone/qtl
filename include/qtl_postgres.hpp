@@ -141,6 +141,21 @@ namespace detail
 		return v;
 	}
 
+	template<typename T, typename = typename std::enable_if<std::is_integral<T>::value && !std::is_const<T>::value>::type>
+	std::pair<std::vector<char>::iterator, size_t> push(std::vector<char>& buffer, T v)
+	{
+		v = hton_inplace(v);
+		char* data = reinterpret_cast<char*>(&v);
+		auto it = buffer.insert(buffer.end(), data, data + sizeof(T));
+		return std::make_pair(it, sizeof(T));
+	}
+
+	template<typename T, typename = typename std::enable_if<std::is_integral<T>::value && !std::is_const<T>::value>::type>
+	const char* pop(const char* data, T& v)
+	{
+		v = ntoh(*reinterpret_cast<const T*>(data));
+		return data + sizeof(T);
+	}
 }
 
 class base_database;
@@ -700,9 +715,10 @@ struct array_header
 	struct oid_traits
 	{
 		typedef T value_type;
-		static Oid type();
-		static const value_type& get(const char*);
-		static std::pair<const char*, size_t> data(const T& v);
+		static Oid type_id;
+		static Oid array_type_id; //optional
+		static const char* get(value_type& result, const char* begin, const char* end);
+		static std::pair<const char*, size_t> data(const T& v, std::vector<char*>& buffer);
 	};
 */
 
@@ -710,65 +726,81 @@ template<typename T, Oid id>
 struct base_object_traits
 {
 	typedef T value_type;
-	enum { type = id };
+	enum { type_id = id };
 	static bool is_match(Oid v)
 	{
-		return v == type;
+		return v == type_id;
 	}
 };
 
 template<typename T>
 struct object_traits;
 
-#define QTL_POSTGRES_DEFOID(T, oid) \
+#define QTL_POSTGRES_SIMPLE_TRAITS(T, oid, array_oid) \
 template<> struct object_traits<T> : public base_object_traits<T, oid> { \
-	static value_type get(const char* data, size_t n) { return *reinterpret_cast<const value_type*>(data); } \
+	enum { array_type_id = array_oid }; \
+	static const char* get(value_type& result, const char* data, const char* end) \
+	{ \
+		result = *reinterpret_cast<const value_type*>(data); \
+		return data+sizeof(value_type); \
+	} \
 	static std::pair<const char*, size_t> data(const T& v, std::vector<char>& /*data*/) { \
 		return std::make_pair(reinterpret_cast<const char*>(&v), sizeof(T)); \
 	} \
 };
 
-QTL_POSTGRES_DEFOID(bool, BOOLOID)
-QTL_POSTGRES_DEFOID(char, CHAROID)
-QTL_POSTGRES_DEFOID(float, FLOAT4OID)
-QTL_POSTGRES_DEFOID(double, FLOAT8OID)
+QTL_POSTGRES_SIMPLE_TRAITS(bool, BOOLOID, 1000)
+QTL_POSTGRES_SIMPLE_TRAITS(char, CHAROID, 1002)
+QTL_POSTGRES_SIMPLE_TRAITS(float, FLOAT4OID, FLOAT4ARRAYOID)
+QTL_POSTGRES_SIMPLE_TRAITS(double, FLOAT8OID, 1022)
 
-template<typename T, Oid id>
+template<typename T, Oid id, Oid array_id>
 struct integral_traits : public base_object_traits<T, id>
 {
+	enum { array_type_id  = array_id };
 	typedef typename base_object_traits<T, id>::value_type value_type;
-	static value_type get(const char* data, size_t n)
+	static const char* get(value_type& v, const char* data, const char* end)
 	{
-		return detail::ntoh(*reinterpret_cast<const value_type*>(data));
+		return detail::pop(data, v);
 	}
-	static std::pair<const char*, size_t> data(value_type v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(value_type v, std::vector<char>& buffer)
 	{
-		data.resize(sizeof(value_type));
-		*reinterpret_cast<value_type*>(data.data()) = detail::hton(v);
-		return std::make_pair(data.data(), data.size());
+		size_t n = buffer.size();
+		detail::push(buffer, v);
+		return std::make_pair(buffer.data()+n, buffer.size()-n);
 	}
 };
 
-template<> struct object_traits<int16_t> : public integral_traits<int16_t, INT2OID>
+template<> struct object_traits<int16_t> : public integral_traits<int16_t, INT2OID, INT2ARRAYOID>
 {
 };
 
-template<> struct object_traits<int32_t> : public integral_traits<int32_t, INT4OID>
+template<> struct object_traits<int32_t> : public integral_traits<int32_t, INT4OID, INT4ARRAYOID>
 {
 };
 
-template<> struct object_traits<int64_t> : public integral_traits<int64_t, INT8OID>
+template<> struct object_traits<int64_t> : public integral_traits<int64_t, INT8OID, 1016>
 {
 };
 
-template<> struct object_traits<const char*> : public base_object_traits<const char*, TEXTOID>
+template<typename T>
+struct text_traits : public base_object_traits<T, TEXTOID>
+{
+	enum { array_type_id = TEXTARRAYOID };
+};
+
+template<> struct object_traits<const char*> : public text_traits<const char*>
 {
 	static bool is_match(Oid v)
 	{
 		return v == TEXTOID || v == VARCHAROID || v == BPCHAROID;
 	}
-	static const char* get(const char* data, size_t n) { return data; }
-	static std::pair<const char*, size_t> data(const char* v, std::vector<char>& /*data*/)
+	static const char* get(const char*& result, const char* data, const char* end)
+	{
+		result = data;
+		return end; 
+	}
+	static std::pair<const char*, size_t> data(const char* v, std::vector<char>& /*buffer*/)
 	{
 		return std::make_pair(v, strlen(v));
 	}
@@ -778,14 +810,18 @@ template<> struct object_traits<char*> : public object_traits<const char*>
 {
 };
 
-template<> struct object_traits<std::string> : public base_object_traits<std::string, TEXTOID>
+template<> struct object_traits<std::string> : public text_traits<std::string>
 {
 	static bool is_match(Oid v)
 	{
 		return v == TEXTOID || v == VARCHAROID || v == BPCHAROID;
 	}
-	static value_type get(const char* data, size_t n) { return std::string(data, n); }
-	static std::pair<const char*, size_t> data(const std::string& v, std::vector<char>& /*data*/)
+	static const char* get(value_type& result, const char* data, const char* end)
+	{ 
+		result.assign(data, end); 
+		return end;
+	}
+	static std::pair<const char*, size_t> data(const std::string& v, std::vector<char>& /*buffer*/)
 	{
 		return std::make_pair(v.data(), v.size());
 	}
@@ -793,108 +829,119 @@ template<> struct object_traits<std::string> : public base_object_traits<std::st
 
 template<> struct object_traits<timestamp> : public base_object_traits<timestamp, TIMESTAMPOID>
 {
-	static value_type get(const char* data, size_t n)
+	enum { array_type_id = TIMESTAMPOID+1 };
+	static const char* get(value_type& result, const char* data, const char* end)
 	{
-		value_type result = *reinterpret_cast<const timestamp*>(data);
+		result = *reinterpret_cast<const timestamp*>(data);
 		result.value = detail::ntoh(result.value);
-		return result;
+		return data+sizeof(timestamp);
 	}
-	static std::pair<const char*, size_t> data(const timestamp& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const timestamp& v, std::vector<char>& buffer)
 	{
-		data.resize(sizeof(timestamp));
-		*reinterpret_cast<int64_t*>(data.data()) = detail::hton(v.value);
-		return std::make_pair(data.data(), data.size());
+		size_t n = buffer.size();
+		detail::push(buffer, v.value);
+		return std::make_pair(buffer.data()+n, buffer.size()-n);
 	}
 };
 
 template<> struct object_traits<timestamptz> : public base_object_traits<timestamptz, TIMESTAMPTZOID>
 {
-	static value_type get(const char* data, size_t n) 
+	enum { array_type_id = TIMESTAMPTZOID+1 };
+	static const char* get(value_type& result, const char* data, const char* end)
 	{
-		value_type result = *reinterpret_cast<const timestamptz*>(data);
+		result = *reinterpret_cast<const timestamptz*>(data);
 		result.value = detail::ntoh(result.value);
-		return result;
+		return data+sizeof(timestamptz);
 	}
-	static std::pair<const char*, size_t> data(const timestamptz& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const timestamptz& v, std::vector<char>& buffer)
 	{
-		data.resize(sizeof(timestamptz));
-		*reinterpret_cast<int64_t*>(data.data()) = detail::hton(v.value);
-		return std::make_pair(data.data(), data.size());
+		size_t n = buffer.size();
+		detail::push(buffer, v.value);
+		return std::make_pair(buffer.data() + n, buffer.size() - n);
 	}
 };
 
 template<> struct object_traits<interval> : public base_object_traits<interval, INTERVALOID>
 {
-	static value_type get(const char* data, size_t n)
+	enum { array_type_id = INTERVALOID+1 };
+	static const char* get(value_type& result, const char* data, const char* end)
 	{
-		interval result;
 		const ::interval* value = reinterpret_cast<const ::interval*>(data);
 		result.value->time = detail::ntoh(value->time);
 		result.value->month = detail::ntoh(value->month);
-		return std::move(result);
+		return data+sizeof(interval);
 	}
-	static std::pair<const char*, size_t> data(const interval& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const interval& v, std::vector<char>& buffer)
 	{
-		data.resize(sizeof(::interval));
-		::interval* value = reinterpret_cast<::interval*>(data.data());
-		value->time = detail::hton(v.value->time);
-		value->month = detail::hton(v.value->month);
-		return std::make_pair(data.data(), data.size());
+		size_t n = buffer.size();
+		detail::push(buffer, v.value->time);
+		detail::push(buffer, v.value->month);
+		return std::make_pair(buffer.data()+n, buffer.size()-n);
 	}
 };
 
 template<> struct object_traits<date> : public base_object_traits<date, DATEOID>
 {
-	static value_type get(const char* data, size_t n)
+	enum { array_type_id = 1182 };
+	static const char* get(value_type& result, const char* data, const char* end)
 	{
-		date result = *reinterpret_cast<const date*>(data);
+		result = *reinterpret_cast<const date*>(data);
 		result.value = detail::ntoh(result.value);
-		return result;
+		return data+sizeof(date);
 	}
-	static std::pair<const char*, size_t> data(const date& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const date& v, std::vector<char>& buffer)
 	{
-		data.resize(sizeof(date));
-		reinterpret_cast<date*>(data.data())->value = detail::hton(v.value);
-		return std::make_pair(data.data(), data.size());
+		size_t n=buffer.size();
+		detail::push(buffer, v.value);
+		return std::make_pair(buffer.data()+n, buffer.size()-n);
 	}
 };
 
-template<> struct object_traits<qtl::const_blob_data> : public base_object_traits<qtl::const_blob_data, BYTEAOID>
+template<typename T>
+struct bytea_traits : public base_object_traits<T, BYTEAOID>
 {
-	static value_type get(const char* data, size_t n)
+	enum { array_type_id = 1001 };
+};
+
+template<> struct object_traits<qtl::const_blob_data> : public bytea_traits<qtl::const_blob_data>
+{
+	static const char* get(value_type& result, const char* data, const char* end)
 	{
-		return qtl::const_blob_data(data, n);
+		result.data = data;
+		result.size = end-data;
+		return end;
 	}
-	static std::pair<const char*, size_t> data(const qtl::const_blob_data& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const qtl::const_blob_data& v, std::vector<char>& /*buffer*/)
 	{
 		assert(v.size <= UINT32_MAX);
 		return std::make_pair(static_cast<const char*>(v.data), v.size);
 	}
 };
 
-template<> struct object_traits<qtl::blob_data> : public base_object_traits<qtl::blob_data, BYTEAOID>
+template<> struct object_traits<qtl::blob_data> : public bytea_traits<qtl::blob_data>
 {
-	static void get(qtl::blob_data& value, const char* data, size_t n)
+	static const char* get(qtl::blob_data& value, const char* data, const char* end)
 	{
-		if (value.size < n)
+		if (value.size < end-data)
 			throw std::out_of_range("no enough buffer to receive blob data.");
-		memcpy(value.data, data, n);
+		memcpy(value.data, data, end-data);
+		return end;
 	}
-	static std::pair<const char*, size_t> data(const qtl::blob_data& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const qtl::blob_data& v, std::vector<char>& /*buffer*/)
 	{
 		assert(v.size <= UINT32_MAX);
 		return std::make_pair(static_cast<char*>(v.data), v.size);
 	}
 };
 
-template<> struct object_traits<std::vector<uint8_t>> : public base_object_traits<std::vector<uint8_t>, BYTEAOID>
+template<> struct object_traits<std::vector<uint8_t>> : public bytea_traits<std::vector<uint8_t>>
 {
-	static value_type get(const char* data, size_t n)
+	static const char* get(value_type& result, const char* data, const char* end)
 	{
-		const uint8_t* begin = reinterpret_cast<const uint8_t*>(data);
-		return std::vector<uint8_t>(begin, begin+n);
+		result.assign(data, end);
+		return end;
 	}
-	static std::pair<const char*, size_t> data(const std::vector<uint8_t>& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const std::vector<uint8_t>& v, std::vector<char>& /*buffer*/)
 	{
 		assert(v.size() <= UINT32_MAX);
 		return std::make_pair(reinterpret_cast<const char*>(v.data()), v.size());
@@ -903,23 +950,28 @@ template<> struct object_traits<std::vector<uint8_t>> : public base_object_trait
 
 template<> struct object_traits<large_object> : public base_object_traits<large_object, OIDOID>
 {
-	static value_type get(PGconn* conn, const char* data, size_t n)
+	enum { array_type_id = OIDARRAYOID };
+	static value_type get(PGconn* conn, const char* data, const char* end)
 	{
-		Oid oid = object_traits<int32_t>::get(data, n);
+		int32_t oid;
+		object_traits<int32_t>::get(oid, data, end);
 		return large_object(conn, oid, std::ios::in | std::ios::out | std::ios::binary);
 	}
-	static std::pair<const char*, size_t> data(const large_object& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const large_object& v, std::vector<char>& buffer)
 	{
-		return object_traits<int32_t>::data(v.oid(), data);
+		return object_traits<int32_t>::data(v.oid(), buffer);
 	}
 };
 
 template<typename T, Oid id> 
-struct array_traits : public base_object_traits<std::vector<T>, id>
+struct vector_traits : public base_object_traits<std::vector<T>, id>
 {
 	typedef typename base_object_traits<std::vector<T>, id>::value_type value_type;
-	static value_type get(const char* data, size_t n)
+	static const char* get(value_type& result, const char* data, const char* end)
 	{
+		if (end - data < sizeof(array_header))
+			throw std::overflow_error("insufficient data left in message");
+
 		array_header header = *reinterpret_cast<const array_header*>(data);
 		detail::ntoh_inplace(header.ndim);
 		detail::ntoh_inplace(header.flags);
@@ -929,58 +981,284 @@ struct array_traits : public base_object_traits<std::vector<T>, id>
 		if (header.ndim != 1 || !object_traits<T>::is_match(header.elemtype))
 			throw std::bad_cast();
 
-		std::vector<T> result;
 		data += sizeof(array_header);
 		result.reserve(header.dims[0].length);
 
 		for (int32_t i = 0; i != header.dims[0].length; i++)
 		{
-			int32_t size = detail::ntoh(*reinterpret_cast<const int32_t*>(data));
-			const char* elem_data = data + sizeof(int32_t);
-			result.push_back(object_traits<T>::get(elem_data, size));
-			data = elem_data + size;
+			int32_t size;
+			T value;
+			data = detail::pop(data, size);
+			if (end - data < size)
+				throw std::overflow_error("insufficient data left in message");
+			data = object_traits<T>::get(value, data, data + size);
+			if (data >= end)
+				throw std::overflow_error("insufficient data left in message");
+			result.push_back(value);
 		}
-		return result;
+		return data;
 	}
-	static std::pair<const char*, size_t> data(const std::vector<T>& v, std::vector<char>& data)
+	static std::pair<const char*, size_t> data(const std::vector<T>& v, std::vector<char>& buffer)
 	{
 		assert(v.size() <= INT32_MAX);
-		data.resize(sizeof(array_header));
-		array_header* header = reinterpret_cast<array_header*>(data.data());
+		size_t n = buffer.size();
+		buffer.resize(n+sizeof(array_header));
+		array_header* header = reinterpret_cast<array_header*>(buffer.data()+n);
 		header->ndim = detail::hton(1);
 		header->flags = detail::hton(0);
-		header->elemtype = detail::hton(object_traits<T>::type);
+		header->elemtype = detail::hton(static_cast<int32_t>(object_traits<T>::type));
 		header->dims[0].length = detail::hton(static_cast<int32_t>(v.size()));
 		header->dims[0].lower_bound = detail::hton(1);
+
 		std::vector<char> temp;
 		for (const T& e : v)
 		{
-			std::pair<const char*, size_t> buffer = object_traits<T>::data(e, temp);
-			int32_t size = detail::hton(static_cast<int32_t>(buffer.second));
-			data.insert(data.end(), reinterpret_cast<char*>(&size), reinterpret_cast<char*>(&size) + sizeof(int32_t));
-			data.insert(data.end(), buffer.first, buffer.first + buffer.second);
+			std::pair<const char*, size_t> blob = object_traits<T>::data(e, temp);
+			detail::push(buffer, static_cast<int32_t>(blob.second));
+			buffer.insert(buffer.end(), blob.first, blob.first + blob.second);
 		}
-		return std::make_pair(reinterpret_cast<const char*>(data.data()), data.size());
+		return std::make_pair(buffer.data()+n, buffer.size()-n);
 	}
 };
 
-template<> class object_traits<std::vector<int16_t>> : public array_traits<int16_t, INT2ARRAYOID>
+template<typename Iterator, Oid id>
+struct iterator_traits : public base_object_traits<Iterator, id>
+{
+	static const char* get(Iterator first, Iterator last, const char* data, const char* end)
+	{
+		if (end - data < sizeof(array_header))
+			throw std::overflow_error("insufficient data left in message");
+
+		array_header header = *reinterpret_cast<const array_header*>(data);
+		detail::ntoh_inplace(header.ndim);
+		detail::ntoh_inplace(header.flags);
+		detail::ntoh_inplace(header.elemtype);
+		detail::ntoh_inplace(header.dims[0].length);
+		detail::ntoh_inplace(header.dims[0].lower_bound);
+		if (header.ndim != 1 || !object_traits<typename std::iterator_traits<Iterator>::value_type>::is_match(header.elemtype))
+			throw std::bad_cast();
+
+		data += sizeof(array_header);
+		if (std::distance(first, last) < header.dims[0].length)
+			throw std::out_of_range("length of array out of range");
+
+		Iterator it = first;
+		for (int32_t i = 0; i != header.dims[0].length; i++, it++)
+		{
+			int32_t size;
+			data = detail::pop(data, size);
+			if (end - data < size)
+				throw std::overflow_error("insufficient data left in message");
+			data = object_traits<typename std::iterator_traits<Iterator>::value_type>::get(*it, data, data + size);
+			if (data >= end)
+				throw std::overflow_error("insufficient data left in message");
+		}
+		return data;
+	}
+	static std::pair<const char*, size_t> data(Iterator first, Iterator last, std::vector<char>& buffer)
+	{
+		assert(std::distance(first, last) <= INT32_MAX);
+		size_t n = buffer.size();
+		buffer.resize(n + sizeof(array_header));
+		array_header* header = reinterpret_cast<array_header*>(buffer.data() + n);
+		header->ndim = detail::hton(1);
+		header->flags = detail::hton(0);
+		header->elemtype = detail::hton(static_cast<int32_t>(object_traits<typename std::iterator_traits<Iterator>::value_type>::type_id));
+		header->dims[0].length = detail::hton(static_cast<int32_t>(std::distance(first, last)));
+		header->dims[0].lower_bound = detail::hton(1);
+
+		std::vector<char> temp;
+		for (Iterator it=first; it!=last; it++)
+		{
+			std::pair<const char*, size_t> blob = object_traits<typename std::iterator_traits<Iterator>::value_type>::data(*it, temp);
+			detail::push(buffer, static_cast<int32_t>(blob.second));
+			buffer.insert(buffer.end(), blob.first, blob.first + blob.second);
+		}
+		return std::make_pair(buffer.data() + n, buffer.size() - n);
+	}
+};
+
+template<typename Iterator, Oid id>
+struct range_traits : public base_object_traits<std::pair<Iterator, Iterator>, id>
+{
+	static const char* get(std::pair<Iterator, Iterator>& result, const char* data, const char* end)
+	{
+		return iterator_traits<Iterator, id>::get(result.first, result.second, data, end);
+	}
+	static std::pair<const char*, size_t> data(const std::pair<Iterator, Iterator>& v, std::vector<char>& buffer)
+	{
+		return iterator_traits<Iterator, id>::data(v.first, v.second, buffer);
+	}
+};
+
+template<typename T> 
+struct object_traits<std::vector<T>> : public vector_traits<T, object_traits<T>::array_type_id>
 {
 };
 
-template<> class object_traits<std::vector<int32_t>> : public array_traits<int32_t, INT4ARRAYOID>
+template<typename Iterator>
+struct object_traits<std::pair<typename std::enable_if<std::is_object<typename std::iterator_traits<Iterator>::value_type>::value, Iterator>::type, Iterator>> : 
+	public range_traits<Iterator, object_traits<typename std::iterator_traits<Iterator>::value_type>::array_type_id>
 {
 };
 
-template<> class object_traits<std::vector<float>> : public array_traits<float, FLOAT4ARRAYOID>
+template<typename T, size_t N, Oid id>
+struct carray_traits : public base_object_traits<T(&)[N], id>
+{
+	static const char* get(T (&result)[N], const char* data, const char* end)
+	{
+		return iterator_traits<T*, id>::get(std::begin(result), std::end(result), data, end);
+	}
+	static std::pair<const char*, size_t> data(const T (&v)[N], std::vector<char>& buffer)
+	{
+		return iterator_traits<const T*, id>::data(std::begin(v), std::end(v), buffer);
+	}
+};
+
+template<typename T, size_t N, Oid id>
+struct array_traits : public base_object_traits<std::array<T, N>, id>
+{
+	static const char* get(std::array<T, N>& result, const char* data, const char* end)
+	{
+		return iterator_traits<T*, id>::get(std::begin(result), std::end(result), data, end);
+	}
+	static std::pair<const char*, size_t> data(const std::array<T, N>& v, std::vector<char>& buffer)
+	{
+		return iterator_traits<T*, id>::data(std::begin(v), std::end(v), buffer);
+	}
+};
+
+template<typename T, size_t N> struct object_traits<T (&)[N]> : public carray_traits<T, N, object_traits<T>::array_type_id>
 {
 };
 
-template<> class object_traits<std::vector<std::string>> : public array_traits<std::string, TEXTARRAYOID>
+template<typename T, size_t N> struct object_traits<std::array<T, N>> : public array_traits<T, N, object_traits<T>::array_type_id>
 {
 };
 
-template<> class object_traits<std::vector<large_object>> : public array_traits<large_object, OIDARRAYOID>
+namespace detail
+{
+
+	struct field_header
+	{
+		Oid type;
+		int32_t length;
+	};
+
+	template<typename Type>
+	static const char* get_field(Type& field, const char* data, const char* end)
+	{
+		field_header header = *reinterpret_cast<const field_header*>(data);
+		detail::ntoh_inplace(header.type);
+		detail::ntoh_inplace(header.length);
+		data += sizeof(field_header);
+		if (end - data < header.length)
+			throw std::overflow_error("insufficient data left in message");
+
+		return object_traits<Type>::get(field, data, data + header.length);
+	}
+
+	template<typename Tuple, size_t N>
+	struct get_field_helper
+	{
+		const char* operator()(Tuple& result, const char* data, const char* end)
+		{
+			if (end - data < sizeof(field_header))
+				throw std::overflow_error("insufficient data left in message");
+
+			auto& field = std::get<std::tuple_size<Tuple>::value - N>(result);
+			data = get_field(field, data, end);
+			get_field_helper<Tuple, N - 1>()(result, data, end);
+			return data;
+		}
+	};
+	template<typename Tuple>
+	struct get_field_helper<Tuple, 1>
+	{
+		const char* operator()(Tuple& result, const char* data, const char* end)
+		{
+			if (end - data < sizeof(field_header))
+				throw std::overflow_error("insufficient data left in message");
+
+			auto& field = std::get<std::tuple_size<Tuple>::value - 1>(result);
+			return get_field(field, data, end);
+		}
+	};
+
+	template<typename Type>
+	static void push_field(const Type& field, std::vector<char>& buffer)
+	{
+		std::vector<char> temp;
+		detail::push(buffer, static_cast<int32_t>(object_traits<Type>::type_id));
+		auto result = object_traits<Type>::data(field, temp);
+		detail::push(buffer, static_cast<int32_t>(result.second));
+		buffer.insert(buffer.end(), result.first, result.first + result.second);
+	}
+
+	template<typename Tuple, size_t N>
+	struct push_field_helper
+	{
+		void operator()(const Tuple& data, std::vector<char>& buffer)
+		{
+			const auto& field = std::get<std::tuple_size<Tuple>::value - N>(data);
+			push_field(field, buffer);
+			push_field_helper<Tuple, N - 1>()(data, buffer);
+		}
+	};
+	template<typename Tuple>
+	struct push_field_helper<Tuple, 1>
+	{
+		void operator()(const Tuple& data, std::vector<char>& buffer)
+		{
+			const auto& field = std::get<std::tuple_size<Tuple>::value - 1>(data);
+			push_field(field, buffer);
+		}
+	};
+
+	template<typename Tuple>
+	static const char* get_fields(Tuple& result, const char* data, const char* end)
+	{
+		return get_field_helper<Tuple, std::tuple_size<Tuple>::value>()(result, data, end);
+	}
+
+	template<typename Tuple>
+	static void push_fields(const Tuple& data, std::vector<char>& buffer)
+	{
+		push_field_helper<Tuple, std::tuple_size<Tuple>::value>()(data, buffer);
+	}
+
+}
+
+template<typename Tuple, Oid id>
+struct tuple_traits : public base_object_traits<Tuple, id>
+{
+	typedef typename base_object_traits<Tuple, id>::value_type value_type;
+	static const char* get(value_type& result, const char* data, const char* end)
+	{
+		int32_t count;
+		data = detail::pop(data, count);
+		if (data >= end)
+			throw std::overflow_error("insufficient data left in message");
+		if (std::tuple_size<Tuple>::value != count)
+			throw std::bad_cast();
+		return detail::get_fields(result, data, end);
+	}
+	static std::pair<const char*, size_t> data(const value_type& v, std::vector<char>& buffer)
+	{
+		size_t n = buffer.size();
+		detail::push(buffer, static_cast<int32_t>(std::tuple_size<value_type>::value));
+		detail::push_fields(v, buffer);
+		return std::make_pair(buffer.data()+n, buffer.size()-n);
+	}
+};
+
+template<typename... Types>
+struct object_traits<std::tuple<Types...>> : public tuple_traits<std::tuple<Types...>, InvalidOid>
+{
+};
+
+template<typename T1, typename T2>
+struct object_traits<std::pair<T1, T2>> : public tuple_traits<std::pair<T1, T2>, InvalidOid>
 {
 };
 
@@ -1012,7 +1290,9 @@ struct binder
 		if (!object_traits<T>::is_match(m_type))
 			throw std::bad_cast();
 
-		return object_traits<T>::get(m_value, m_length);
+		T v;
+		object_traits<T>::get(v, m_value, m_value + m_length);
+		return v;
 	}
 	template<typename T>
 	T get(PGconn* conn)
@@ -1020,15 +1300,15 @@ struct binder
 		if (!object_traits<T>::is_match(m_type))
 			throw std::bad_cast();
 
-		return object_traits<T>::get(conn, m_value, m_length);
+		return object_traits<T>::get(conn, m_value, m_value + m_length);
 	}
 	template<typename T>
 	void get(T& v)
 	{
-		if (!object_traits<T>::is_match(m_type))
+		if (object_traits<T>::type_id!= InvalidOid && !object_traits<T>::is_match(m_type))
 			throw std::bad_cast();
 
-		return object_traits<T>::get(v, m_value, m_length);
+		object_traits<T>::get(v, m_value, m_value + m_length);
 	}
 
 	void bind(std::nullptr_t)
@@ -1041,7 +1321,7 @@ struct binder
 		bind(nullptr);
 	}
 
-	template<typename T>
+	template<typename T, typename = typename std::enable_if<!std::is_array<T>::value>::type>
 	void bind(const T& v)
 	{
 		typedef typename std::decay<T>::type param_type;
@@ -1052,10 +1332,21 @@ struct binder
 		m_value = pair.first;
 		m_length = pair.second;
 	}
-	void bind(const char* data, size_t length)
+	void bind(const char* data, size_t length=0)
 	{
 		m_value = data;
-		m_length = length;
+		if(length>0) m_length = length;
+		else m_length = strlen(data);
+	}
+	template<typename T, size_t N>
+	void bind(const T(&v)[N])
+	{
+		if (m_type != 0 && !object_traits<T(&)[N]>::is_match(m_type))
+			throw std::bad_cast();
+
+		auto pair = object_traits<T(&)[N]>::data(v, m_data);
+		m_value = pair.first;
+		m_length = pair.second;
 	}
 
 private:
@@ -1309,6 +1600,16 @@ public:
 			m_binders[index].get(value);
 		}
 	}
+
+	template<typename... Types>
+	void bind_field(size_t index, std::tuple<Types...>&& value)
+	{
+		if (m_res.is_null(0, static_cast<int>(index)))
+			value = std::tuple<Types...>();
+		else
+			m_binders[index].get(value);
+	}
+
 
 protected:
 	PGconn* m_conn;
