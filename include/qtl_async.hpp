@@ -163,24 +163,14 @@ public:
 		pThis->open_command(query_text, text_length, [handler, params](const typename T::exception_type& e, std::shared_ptr<Command>& command) mutable {
 			if(e)
 			{
-				handler(e, 0);
-				command->close([command, handler](const typename T::exception_type& e) mutable {
-					if(e) handler(e, 0);
+				command->close([command, e, handler](const typename T::exception_type& ae) mutable {
+					handler(e ? e : ae, 0);
 				});
 				return;
 			}
 			command->execute(params, [command, handler](const typename T::exception_type& e, uint64_t affected) mutable {
-				if(e)
-				{
-					handler(e, 0);
-					command->close([command, handler](const typename T::exception_type& e) mutable {
-						if(e) handler(e, 0);
-					});
-					return;
-				}
-				handler(typename T::exception_type(), affected);
-				command->close([command, handler](const typename T::exception_type& e) mutable {
-					if(e) handler(e, 0);
+				command->close([command, handler, e, affected](const typename T::exception_type& ae) mutable {
+					handler(e ? e : ae, affected);
 				});
 			});
 		});
@@ -227,25 +217,18 @@ public:
 		pThis->open_command(query_text, text_length, [handler, params](const typename T::exception_type& e, std::shared_ptr<Command>& command) {
 			if(e)
 			{
-				handler(e, 0);
+				command->close([command, e, handler](const typename T::exception_type& ae) mutable {
+					handler(e ? e : ae, 0);
+				});
 			}
 			else
 			{
 				command->execute(params, [command, handler](const typename T::exception_type& e, uint64_t affected) {
-					if(e)
-					{
-						handler(e, 0);
-					}
-					else if (affected > 0)
-					{
-						handler(typename T::exception_type(), command->insert_id());
-					}
-					else
-					{
-						handler(typename T::exception_type(), 0);
-					}
-					command->close([handler](const typename T::exception_type& e) {
-						handler(e, 0);
+					auto insert_id = 0;
+					if(!e && affected>0)
+						insert_id  = command->insert_id();
+					command->close([command, handler, e, insert_id](const typename T::exception_type& ae) mutable {
+						handler(e ? e : ae, insert_id);
 					});
 				});
 			}

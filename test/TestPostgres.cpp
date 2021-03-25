@@ -73,6 +73,10 @@ void TestPostgres::test_dual()
 	{
 		ASSERT_EXCEPTION(e);
 	}
+	catch (std::exception& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
 }
 
 void TestPostgres::test_select()
@@ -83,7 +87,7 @@ void TestPostgres::test_select()
 	try
 	{
 		db.query("select * from test where id=$1", 0, id,
-			[](const qtl::indicator<int32_t>& id, const std::string& name, const qtl::postgres::timestamp& create_time) {
+			[](const qtl::indicator<int32_t>& id, const std::string& name, const qtl::postgres::timestamp& create_time, const std::vector<int32_t>& v, const std::tuple<int, int>& pt) {
 			printf("ID=\"%d\", Name=\"%s\"\n",
 				id.data, name.data());
 		});
@@ -101,6 +105,10 @@ void TestPostgres::test_select()
 	{
 		ASSERT_EXCEPTION(e);
 	}
+	catch (std::exception& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
 }
 
 void TestPostgres::test_insert()
@@ -110,10 +118,15 @@ void TestPostgres::test_insert()
 
 	try
 	{
-		db.query_first("insert into test(Name, CreateTime) values($1, LOCALTIMESTAMP) returning ID",
-			"test_user", id);
+		int32_t va[] = { 200, 300, 400 };
+		db.query_first("insert into test(Name, CreateTime, va, percent) values($1, LOCALTIMESTAMP, $2, $3) returning ID",
+			std::forward_as_tuple("test_user", va, std::make_pair(11, 22)), id);
 	}
 	catch (qtl::postgres::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+	catch (std::exception& e)
 	{
 		ASSERT_EXCEPTION(e);
 	}
@@ -136,6 +149,10 @@ void TestPostgres::test_insert2()
 	{
 		ASSERT_EXCEPTION(e);
 	}
+	catch (std::exception& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
 }
 
 void TestPostgres::test_update()
@@ -152,7 +169,10 @@ void TestPostgres::test_update()
 	{
 		ASSERT_EXCEPTION(e);
 	}
-	TEST_ASSERT_MSG(id > 0, "insert failture.");
+	catch (std::exception& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
 }
 
 void TestPostgres::test_clear()
@@ -165,6 +185,10 @@ void TestPostgres::test_clear()
 		db.simple_execute("delete from test");
 	}
 	catch (qtl::postgres::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+	catch (std::exception& e)
 	{
 		ASSERT_EXCEPTION(e);
 	}
@@ -185,6 +209,10 @@ void TestPostgres::test_iterator()
 		}
 	}
 	catch (qtl::postgres::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+	catch (std::exception& e)
 	{
 		ASSERT_EXCEPTION(e);
 	}
@@ -233,6 +261,10 @@ void TestPostgres::test_insert_blob()
 	{
 		ASSERT_EXCEPTION(e);
 	}
+	catch (std::bad_cast& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
 }
 
 void TestPostgres::test_select_blob()
@@ -268,6 +300,10 @@ void TestPostgres::test_select_blob()
 		}
 	}
 	catch (qtl::postgres::error& e)
+	{
+		ASSERT_EXCEPTION(e);
+	}
+	catch (std::bad_cast& e)
 	{
 		ASSERT_EXCEPTION(e);
 	}

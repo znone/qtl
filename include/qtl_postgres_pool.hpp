@@ -38,6 +38,32 @@ protected:
 	std::string m_password;
 };
 
+template<typename EventLoop>
+class async_pool : public qtl::async_pool<async_pool<EventLoop>, EventLoop, async_connection>
+{
+	typedef qtl::async_pool<async_pool<EventLoop>, EventLoop, async_connection> base_class;
+public:
+	async_pool(EventLoop& ev) : base_class(ev) { }
+	virtual ~async_pool() { }
+
+	template<typename Handler>
+	void new_connection(EventLoop& ev, Handler&& handler) throw()
+	{
+		async_connection* db = new async_connection;
+		db->open(ev, [this, handler, db](const postgres::error& e) mutable {
+			if (e)
+			{
+				delete db;
+				db = nullptr;
+			}
+			handler(e, db);
+		}, m_params);
+	}
+
+protected:
+	std::map<std::string, std::string> m_params;
+};
+
 }
 
 }

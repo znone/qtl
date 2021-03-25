@@ -3,6 +3,7 @@
 
 #include <mysql.h>
 #include <errmsg.h>
+
 #include <time.h>
 #include <memory.h>
 #include <assert.h>
@@ -1187,7 +1188,7 @@ public:
 
 #if MARIADB_VERSION_ID >= 100000
 
-int event_flags(int status) NOEXCEPT
+inline int event_flags(int status) NOEXCEPT
 {
 	int flags = 0;
 	if (status&MYSQL_WAIT_READ)
@@ -1199,7 +1200,7 @@ int event_flags(int status) NOEXCEPT
 	return flags;
 }
 
-int mysql_status(int flags) NOEXCEPT
+inline int mysql_status(int flags) NOEXCEPT
 {
 	int status = 0;
 	if (flags&event::ef_read)

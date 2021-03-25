@@ -1,7 +1,7 @@
 #ifndef _QTL_ASIO_H_
 #define _QTL_ASIO_H_
 
-#include <qtl_async.hpp>
+#include "qtl_async.hpp"
 #include <asio/version.hpp>
 #define ASIO_STANDALONE
 #if ASIO_VERSION < 101200
@@ -84,6 +84,7 @@ private:
 					else
 						handler(qtl::event::ef_exception);
 					_busying = false;
+					_timer.cancel();
 				}));
 				_busying = true;
 			}
@@ -100,6 +101,7 @@ private:
 						handler(qtl::event::ef_timeout);
 					else
 						handler(qtl::event::ef_exception);
+					_timer.cancel();
 					_busying = false;
 				}));
 				_busying = true;
@@ -197,8 +199,14 @@ template<typename Connection, typename OpenHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(OpenHandler, void(typename Connection::exception_type)) 
 async_open(service& service, Connection& db, OpenHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<OpenHandler,
 		void(typename Connection::exception_type)> init(std::forward<OpenHandler>(handler));
+#else
+	async_init_type<OpenHandler,
+		void(typename Connection::exception_type)> init(handler);
+#endif
+
 	db.open(service, get_async_handler(init), std::forward<Args>(args)...);
 	return init.result.get();
 }
@@ -207,8 +215,14 @@ template<typename Connection, typename CloseHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(CloseHandler, void()) 
 async_close(Connection& db, CloseHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
+	async_init_type<CloseHandler,
+		void()> init(std::forward<CloseHandler>(std::forward<CloseHandler>(handler)));
+#else
 	async_init_type<CloseHandler,
 		void()> init(std::forward<CloseHandler>(handler));
+#endif
+
 	db.close(get_async_handler(init), std::forward<Args>(args)...);
 	return init.result.get();
 }
@@ -217,8 +231,14 @@ template<typename Connection, typename ExecuteHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t))  
 async_execute(Connection& db, ExecuteHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<ExecuteHandler,
 		void(typename Connection::exception_type, uint64_t)> init(std::forward<ExecuteHandler>(handler));
+#else
+	async_init_type<ExecuteHandler,
+		void(typename Connection::exception_type, uint64_t)> init(handler);
+#endif
+
 	db.execute(get_async_handler(init), std::forward<Args>(args)...);
 	return init.result.get();
 }
@@ -227,8 +247,14 @@ template<typename Connection, typename ExecuteHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t))  
 async_execute_direct(Connection& db, ExecuteHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<ExecuteHandler,
 		void(typename Connection::exception_type, uint64_t)> init(std::forward<ExecuteHandler>(handler));
+#else
+	async_init_type<ExecuteHandler,
+		void(typename Connection::exception_type, uint64_t)> init(handler);
+#endif
+
 	db.execute_direct(get_async_handler(init), std::forward<Args>(args)...);
 	return init.result.get();
 }
@@ -237,8 +263,14 @@ template<typename Connection, typename ExecuteHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t)) 
  async_insert(Connection& db, ExecuteHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<ExecuteHandler,
 		void(typename Connection::exception_type, uint64_t)> init(std::forward<ExecuteHandler>(handler));
+#else
+	async_init_type<ExecuteHandler,
+		void(typename Connection::exception_type, uint64_t)> init(handler);
+#endif
+
 	db.insert(get_async_handler(init), std::forward<Args>(args)...);
 	return init.result.get();
 }
@@ -247,8 +279,14 @@ template<typename Connection, typename ExecuteHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t)) 
  async_insert_direct(Connection& db, ExecuteHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<ExecuteHandler,
 		void(typename Connection::exception_type, uint64_t)> init(std::forward<ExecuteHandler>(handler));
+#else
+	async_init_type<ExecuteHandler,
+		void(typename Connection::exception_type, uint64_t)> init(handler);
+#endif
+
 	db.insert_direct(get_async_handler(init), std::forward<Args>(args)...);
 	return init.result.get();
 }
@@ -257,8 +295,14 @@ template<typename Connection, typename FinishHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type)) 
  async_query(Connection& db, FinishHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<FinishHandler,
 		void(typename Connection::exception_type)> init(std::forward<FinishHandler>(handler));
+#else
+	async_init_type<FinishHandler,
+		void(typename Connection::exception_type)> init(handler);
+#endif
+
 	db.query(std::forward<Args>(args)..., get_async_handler(init));
 	return init.result.get();
 }
@@ -267,8 +311,14 @@ template<typename Connection, typename FinishHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type)) 
 async_query_explicit(Connection& db, FinishHandler&& handler, Args&&... args)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<FinishHandler,
 		void(typename Connection::exception_type)> init(std::forward<FinishHandler>(handler));
+#else
+	async_init_type<FinishHandler,
+		void(typename Connection::exception_type)> init(handler);
+#endif
+
 	db.query_explicit(std::forward<Args>(args)..., get_async_handler(init));
 	return init.result.get();
 }
@@ -277,8 +327,14 @@ template<typename Connection, typename A1, typename A2, typename FinishHandler, 
 inline ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))
 async_query_multi_with_params(Connection& db, A1&& a1, A2&& a2, FinishHandler&& handler, RowHandlers&&... row_handlers)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<FinishHandler,
 		void(typename Connection::exception_type)> init(std::forward<FinishHandler>(handler));
+#else
+	async_init_type<FinishHandler,
+		void(typename Connection::exception_type)> init(handler);
+#endif
+
 	db.query_multi_with_params(std::forward<A1>(a1), std::forward<A2>(a2), get_async_handler(init), std::forward<RowHandlers>(row_handlers)...);
 	return init.result.get();
 }
@@ -287,8 +343,14 @@ template<typename Connection, typename A1, typename FinishHandler, typename... R
 inline ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))
 async_query_multi_with_params(Connection& db, A1&& a1, FinishHandler&& handler, RowHandlers&&... row_handlers)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<FinishHandler,
 		void(typename Connection::exception_type)> init(std::forward<FinishHandler>(handler));
+#else
+	async_init_type<FinishHandler,
+		void(typename Connection::exception_type)> init(handler);
+#endif
+
 	db.query_multi_with_params(std::forward<A1>(a1), get_async_handler(init), std::forward<RowHandlers>(row_handlers)...);
 	return init.result.get();
 }
@@ -297,8 +359,14 @@ template<typename Connection, typename A1, typename A2, typename FinishHandler, 
 inline ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))
 async_query_multi(Connection& db, A1&& a1, A2&& a2, FinishHandler&& handler, RowHandlers&&... row_handlers)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<FinishHandler,
 		void(typename Connection::exception_type)> init(std::forward<FinishHandler>(handler));
+#else
+	async_init_type<FinishHandler,
+		void(typename Connection::exception_type)> init(handler);
+#endif
+
 	db.query_multi(std::forward<A1>(a1), std::forward<A2>(a2), get_async_handler(init), std::forward<RowHandlers>(row_handlers)...);
 	return init.result.get();
 }
@@ -307,8 +375,14 @@ template<typename Connection, typename A1, typename FinishHandler, typename... R
 inline ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))
 async_query_multi(Connection& db, A1&& a1, FinishHandler&& handler, RowHandlers&&... row_handlers)
 {
+#if ASIO_VERSION < 101200
 	async_init_type<FinishHandler,
 		void(typename Connection::exception_type)> init(std::forward<FinishHandler>(handler));
+#else
+	async_init_type<FinishHandler,
+		void(typename Connection::exception_type)> init(handler);
+#endif
+
 	db.query_multi(std::forward<A1>(a1), get_async_handler(init), std::forward<RowHandlers>(row_handlers)...);
 	return init.result.get();
 }
