@@ -976,7 +976,7 @@ public:
 		return const_cast<blobbuf*>(&m_buffer);
 	}
 
-	std::streamoff blob_size() const { return m_buffer.blob_size(); }
+	std::streamoff blob_size() const { return m_buffer.size(); }
 
 private:
 	blobbuf m_buffer;
@@ -1034,7 +1034,7 @@ public:
 		return const_cast<blobbuf*>(&m_buffer);
 	}
 
-	std::streamoff blob_size() const { return m_buffer.blob_size(); }
+	std::streamoff blob_size() const { return m_buffer.size(); }
 
 private:
 	blobbuf m_buffer;
@@ -1092,7 +1092,7 @@ public:
 		return const_cast<blobbuf*>(&m_buffer);
 	}
 
-	std::streamoff blob_size() const { return m_buffer.blob_size(); }
+	std::streamoff blob_size() const { return m_buffer.size(); }
 
 private:
 	blobbuf m_buffer;

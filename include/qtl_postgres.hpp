@@ -27,7 +27,7 @@
 
 extern "C"
 {
-#include <postgres.h>
+#include <c.h>
 #include <catalog/pg_type.h>
 }
 
@@ -59,6 +59,41 @@ extern "C"
 #endif
 #ifdef unlink
 #undef unlink
+#endif
+
+#if defined(_WIN32) && _WIN32_WINNT < 0x0601
+
+#ifdef _M_IX86
+
+#define _WS2_32_WINSOCK_SWAP_LONGLONG(l)            \
+            ( ( ((l) >> 56) & 0x00000000000000FFLL ) |       \
+              ( ((l) >> 40) & 0x000000000000FF00LL ) |       \
+              ( ((l) >> 24) & 0x0000000000FF0000LL ) |       \
+              ( ((l) >>  8) & 0x00000000FF000000LL ) |       \
+              ( ((l) <<  8) & 0x000000FF00000000LL ) |       \
+              ( ((l) << 24) & 0x0000FF0000000000LL ) |       \
+              ( ((l) << 40) & 0x00FF000000000000LL ) |       \
+              ( ((l) << 56) & 0xFF00000000000000LL ) )
+
+#ifndef htonll
+__inline unsigned __int64 htonll(unsigned __int64 Value)
+{
+	const unsigned __int64 Retval = _WS2_32_WINSOCK_SWAP_LONGLONG(Value);
+	return Retval;
+}
+#endif /* htonll */
+
+#ifndef ntohll
+__inline unsigned __int64 ntohll(unsigned __int64 Value)
+{
+	const unsigned __int64 Retval = _WS2_32_WINSOCK_SWAP_LONGLONG(Value);
+	return Retval;
+}
+
+#endif /* ntohll */
+
+#endif
+
 #endif
 
 namespace qtl
@@ -793,6 +828,10 @@ template<> struct object_traits<int64_t> : public integral_traits<int64_t, INT8O
 {
 };
 
+template<> struct object_traits<Oid> : public integral_traits<Oid, OIDOID, OIDARRAYOID>
+{
+};
+
 template<typename T>
 struct text_traits : public base_object_traits<T, TEXTOID>
 {
@@ -1016,7 +1055,7 @@ struct vector_traits : public base_object_traits<std::vector<T>, id>
 		array_header* header = reinterpret_cast<array_header*>(buffer.data()+n);
 		header->ndim = detail::hton(1);
 		header->flags = detail::hton(0);
-		header->elemtype = detail::hton(static_cast<int32_t>(object_traits<T>::type));
+		header->elemtype = detail::hton(static_cast<int32_t>(object_traits<T>::type_id));
 		header->dims[0].length = detail::hton(static_cast<int32_t>(v.size()));
 		header->dims[0].lower_bound = detail::hton(1);
 
@@ -1852,6 +1891,12 @@ public:
 	{
 		int encoding = PQclientEncoding(m_conn);
 		return (encoding >= 0) ? pg_encoding_to_char(encoding) : nullptr;
+	}
+
+	void encoding(const char* encoding)
+	{
+		if (PQsetClientEncoding(m_conn, encoding))
+			throw error(m_conn);
 	}
 
 	void trace(FILE* stream)

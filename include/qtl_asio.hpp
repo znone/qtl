@@ -4,6 +4,9 @@
 #include "qtl_async.hpp"
 #include <asio/version.hpp>
 #define ASIO_STANDALONE
+#if defined(_MSC_VER) && _WIN32_WINNT<0x0600
+#define ASIO_ENABLE_CANCELIO 1 
+#endif
 #if ASIO_VERSION < 101200
 #include <asio/io_service.hpp>
 #else

@@ -1083,55 +1083,67 @@ public:
 	}
 
 	template<typename Params, typename Values>
-	base_database& query_first(const char* query_text, size_t text_length, const Params& params, Values&& values)
+	bool query_first(const char* query_text, size_t text_length, const Params& params, Values&& values)
 	{
-		return query_explicit(query_text, text_length, params, std::forward<Values>(values), first_record());
+		first_record fetcher;
+		query_explicit(query_text, text_length, params, std::forward<Values>(values), std::ref(fetcher));
+		return fetcher;
 	}
 
 	template<typename Params, typename Values>
-	base_database& query_first(const char* query_text, const Params& params, Values&& values)
+	bool query_first(const char* query_text, const Params& params, Values&& values)
 	{
-		return query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), first_record());
+		first_record fetcher;
+		query_explicit(query_text, strlen(query_text), params, std::forward<Values>(values), std::ref(fetcher));
+		return fetcher;
 	}
 
 	template<typename Params, typename Values>
-	base_database& query_first(const std::string& query_text, const Params& params, Values&& values)
+	bool query_first(const std::string& query_text, const Params& params, Values&& values)
 	{
-		return query_explicit(query_text, params, values, first_record());
+		first_record fetcher;
+		return query_explicit(query_text, params, values, std::ref(fetcher));
+		return fetcher;
 	}
 
 	template<typename Values>
-	base_database& query_first(const char* query_text, size_t text_length, Values&& values)
+	bool query_first(const char* query_text, size_t text_length, Values&& values)
 	{
-		return query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), first_record());
+		first_record fetcher;
+		return query_explicit(query_text, text_length, std::make_tuple(), std::forward<Values>(values), std::ref(fetcher));
+		return fetcher;
 	}
 
 	template<typename Values>
-	base_database& query_first(const char* query_text, Values&& values)
+	bool query_first(const char* query_text, Values&& values)
 	{
-		return query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), first_record());
+		first_record fetcher;
+		return query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), std::ref(fetcher));
+		return fetcher;
 	}
 
 	template<typename Values>
-	base_database& query_first(const std::string& query_text, Values&& values)
+	bool query_first(const std::string& query_text, Values&& values)
 	{
-		return query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), first_record());
+		first_record fetcher;
+		return query_explicit(query_text, std::make_tuple(), std::forward<Values>(values), std::ref(fetcher));
+		return fetcher;
 	}
 
 	template<typename... Values>
-	base_database& query_first_direct(const char* query_text, size_t text_length, Values&... values)
+	bool query_first_direct(const char* query_text, size_t text_length, Values&... values)
 	{
 		return query_first(query_text, text_length, std::tie(values...));
 	}
 
 	template<typename... Values>
-	base_database& query_first_direct(const char* query_text, Values&... values)
+	bool query_first_direct(const char* query_text, Values&... values)
 	{
 		return query_first(query_text, std::tie(values...));
 	}
 
 	template<typename... Values>
-	base_database& query_first_direct(const std::string& query_text, Values&... values)
+	bool query_first_direct(const std::string& query_text, Values&... values)
 	{
 		return query_first(query_text, std::tie(values...));
 	}
@@ -1143,7 +1155,12 @@ protected:
 	};
 	struct first_record 
 	{
-		template<typename... Values> bool operator()(Values&&...) const {  return false; }
+		first_record() : _found(false) { }
+		template<typename... Values> bool operator()(Values&&...) { _found = true; return false; }
+		operator bool() const { return _found; }
+
+	private:
+		bool _found;
 	};
 };
 
