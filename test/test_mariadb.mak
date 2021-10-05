@@ -5,7 +5,7 @@ PCH=stdafx.h.gch
 OBJ=TestMariaDB.o
 CFLAGS=-g -D_DEBUG -O2 -D_QTL_USE_MARIADB -I/usr/include $(shell mariadb_config --cflags)
 CXXFLAGS=-I../include -std=c++11
-LDFLAGS= -L/usr/local/lib $(shell -L/usr/local/lib/mariadb/ -lmariadb)
+LDFLAGS= -L/usr/local/lib $(shell mariadb_config --libs)
 
 all : $(TARGET)
 

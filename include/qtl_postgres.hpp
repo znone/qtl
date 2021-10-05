@@ -216,6 +216,8 @@ public:
 		else m_errmsg.clear();
 	}
 
+	explicit error(const char* errmsg) : m_errmsg(errmsg) { }
+
 	virtual const char* what() const NOEXCEPT override { return m_errmsg.data(); }
 	operator bool() const { return !m_errmsg.empty(); }
 
@@ -1682,6 +1684,116 @@ public:
 			m_binders[index].get(value);
 	}
 
+#ifdef _QTL_ENABLE_CPP17
+
+	template<typename T>
+	inline void bind_field(size_t index, std::optional<T>&& value)
+	{
+		if (m_res.is_null(0, static_cast<int>(index)))
+		{
+			value.reset();
+		}
+		else
+		{
+			T v;
+			bind_field(index, v);
+			value = std::move(v);
+		}
+	}
+
+	void bind_field(size_t index, std::any&& value)
+	{
+		if (m_res.is_null(0, static_cast<int>(index)))
+		{
+			value = nullptr;
+		}
+		else
+		{
+			Oid oid = m_res.get_column_type(index);
+			switch (oid)
+			{
+			case object_traits<bool>::type_id:
+				value = field_cast<bool>(index);
+				break;
+			case object_traits<char>::type_id:
+				value = field_cast<char>(index);
+				break;
+			case object_traits<float>::type_id:
+				value = field_cast<float>(index);
+				break;
+			case object_traits<double>::type_id:
+				value = field_cast<double>(index);
+				break;
+			case object_traits<int16_t>::type_id:
+				value = field_cast<int16_t>(index);
+				break;
+			case object_traits<int32_t>::type_id:
+				value = field_cast<int32_t>(index);
+				break;
+			case object_traits<int64_t>::type_id:
+				value = field_cast<int64_t>(index);
+				break;
+			case object_traits<Oid>::type_id:
+				value = field_cast<Oid>(index);
+				break;
+			case object_traits<std::string>::type_id:
+				value = field_cast<std::string>(index);
+				break;
+			case object_traits<timestamp>::type_id:
+				value = field_cast<timestamp>(index);
+				break;
+			case object_traits<interval>::type_id:
+				value = field_cast<interval>(index);
+				break;
+			case object_traits<date>::type_id:
+				value = field_cast<date>(index);
+				break;
+			case object_traits<std::vector<uint8_t>>::type_id:
+				value = field_cast<std::vector<uint8_t>>(index);
+				break;
+			case object_traits<bool>::array_type_id:
+				value = field_cast<std::vector<bool>>(index);
+				break;
+			case object_traits<char>::array_type_id:
+				value = field_cast<std::vector<char>>(index);
+				break;
+			case object_traits<float>::array_type_id:
+				value = field_cast<std::vector<float>>(index);
+				break;
+			case object_traits<double>::array_type_id:
+				value = field_cast<std::vector<double>>(index);
+				break;
+			case object_traits<int16_t>::array_type_id:
+				value = field_cast<std::vector<int16_t>>(index);
+				break;
+			case object_traits<int32_t>::array_type_id:
+				value = field_cast<std::vector<int32_t>>(index);
+				break;
+			case object_traits<int64_t>::array_type_id:
+				value = field_cast<std::vector<int64_t>>(index);
+				break;
+			case object_traits<Oid>::array_type_id:
+				value = field_cast<std::vector<Oid>>(index);
+				break;
+			case object_traits<std::string>::array_type_id:
+				value = field_cast<std::vector<std::string>>(index);
+				break;
+			case object_traits<timestamp>::array_type_id:
+				value = field_cast<std::vector<timestamp>>(index);
+				break;
+			case object_traits<interval>::array_type_id:
+				value = field_cast<std::vector<interval>>(index);
+				break;
+			case object_traits<date>::array_type_id:
+				value = field_cast<std::vector<date>>(index);
+				break;
+			default:
+				throw postgres::error("Unsupported field type");
+			}
+		}
+	}
+
+#endif // C++17
 
 protected:
 	PGconn* m_conn;
@@ -1703,6 +1815,14 @@ protected:
 		{
 			res = PQgetResult(m_conn);
 		}
+	}
+
+	template<typename T>
+	T field_cast(size_t index)
+	{
+		T v;
+		m_binders[index].get(v);
+		return v;
 	}
 };
 
@@ -2654,7 +2774,7 @@ public:
 	}
 
 	template<typename Handler>
-	bool is_alive(Handler&& handler) NOEXCEPT
+	void is_alive(Handler&& handler) NOEXCEPT
 	{
 		simple_execute(std::forward<Handler>(handler), "");
 	}

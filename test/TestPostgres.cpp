@@ -320,12 +320,10 @@ void TestPostgres::test_any()
 	{
 		db.query("select 0, 'hello world', LOCALTIMESTAMP",
 			[](const std::any& i, const std::any& str, const std::any& now) {
-			const qtl::postgres::time& time = std::any_cast<const qtl::postgres::time&>(now);
-			struct tm tm;
-			time.as_tm(tm);
+			const qtl::postgres::timestamp& time = std::any_cast<const qtl::postgres::timestamp&>(now);
 			cout << "0=\"" << std::any_cast<int32_t>(i) << "\", 'hello world'=\"" <<
 				std::any_cast<const std::string&>(str) << "\", now=\"" <<
-				std::put_time(&tm, "%c") << "\" \n";
+				time.to_string() << "\" \n";
 		});
 	}
 	catch (qtl::postgres::error& e)

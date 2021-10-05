@@ -322,7 +322,11 @@ template<typename F, typename T>
 struct apply_impl
 {
 private:
+#if __cplusplus >= 202002L || _MSVC_LANG >= 202002L
+	typedef typename std::invoke_result<F, T>::type raw_result_type;
+#else
 	typedef typename std::result_of<F(T)>::type raw_result_type;
+#endif
 	template<typename Ret, bool>
 	struct impl {};
 	template<typename Ret>
@@ -359,7 +363,11 @@ struct apply_impl<F, std::tuple<Types...>>
 private:
 	typedef typename std::remove_reference<F>::type fun_type;
 	typedef std::tuple<Types...> arg_type;
+#if __cplusplus >= 202002L || _MSVC_LANG >= 202002L
+	typedef typename std::invoke_result<F, Types...>::type raw_result_type;
+#else
 	typedef typename std::result_of<F(Types...)>::type raw_result_type;
+#endif
 	template<typename Ret, bool>
 	struct impl {};
 	template<typename Ret>
@@ -768,9 +776,15 @@ inline void bind_record(Command& command, T&& value)
 }
 
 template<typename Command, typename Record>
-class query_iterator final : public std::iterator<std::forward_iterator_tag, Record>
+class query_iterator final
 {
 public:
+	using iterator_category = std::forward_iterator_tag;
+	using value_type = Record;
+	using difference_type = ptrdiff_t;
+	using pointer = Record*;
+	using reference = Record&;
+
 	explicit query_iterator(Command& command) 
 		: m_command(command) { }
 	Record* operator->() const { return m_record.get(); }
@@ -780,7 +794,7 @@ public:
 	{
 		if(!m_record)
 			m_record=std::make_shared<Record>();
-		if(m_record.unique())
+		if(m_record.use_count()==1)
 		{
 			if(!m_command.fetch(std::forward<Record>(*m_record)))
 				m_record.reset();
@@ -1118,7 +1132,7 @@ public:
 	bool query_first(const char* query_text, Values&& values)
 	{
 		first_record fetcher;
-		return query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), std::ref(fetcher));
+		query_explicit(query_text, strlen(query_text), std::make_tuple(), std::forward<Values>(values), std::ref(fetcher));
 		return fetcher;
 	}
 
