@@ -768,9 +768,15 @@ inline void bind_record(Command& command, T&& value)
 }
 
 template<typename Command, typename Record>
-class query_iterator final : public std::iterator<std::forward_iterator_tag, Record>
+class query_iterator final
 {
 public:
+	using iterator_category = std::forward_iterator_tag;
+	using value_type = Record;
+	using difference_type = ptrdiff_t;
+	using pointer = Record*;
+	using reference = Record&;
+
 	explicit query_iterator(Command& command) 
 		: m_command(command) { }
 	Record* operator->() const { return m_record.get(); }
@@ -780,7 +786,7 @@ public:
 	{
 		if(!m_record)
 			m_record=std::make_shared<Record>();
-		if(m_record.unique())
+		if(m_record.use_count()==1)
 		{
 			if(!m_command.fetch(std::forward<Record>(*m_record)))
 				m_record.reset();

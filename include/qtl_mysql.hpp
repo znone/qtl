@@ -936,7 +936,7 @@ public:
 	}
 	int read(char *buf, unsigned int buf_len)
 	{
-		fread(buf, 1, buf_len, m_fp);
+		return fread(buf, 1, buf_len, m_fp);
 	}
 	void close()
 	{
