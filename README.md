@@ -4,6 +4,15 @@ Using QTL requires a compiler that supports C++11.
 
 The project [db2qtl](https://github.com/znone/db2qtl) can generate QTL code.
 
+## CMake building
+
+``` cmd
+mkdir build
+cd build
+cmake .. 
+cmake --build .
+```
+
 ## Usage
 
 ### Open database
