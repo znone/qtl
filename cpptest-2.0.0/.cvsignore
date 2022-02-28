@@ -1,0 +1,12 @@
+libtool
+configure
+config.status
+config.log
+autom4te.cache
+aclocal.m4
+README
+Makefile.in
+Makefile
+INSTALL.quick
+libcpptest.pc
+

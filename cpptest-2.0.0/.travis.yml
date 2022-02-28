@@ -1,0 +1,52 @@
+# Copyright (C) 2017 Sebastian Pipping <sebastian@pipping.org>
+# Licensed under GNU LGPL v2.1 or later
+
+language: cpp
+dist: xenial
+
+script:
+  - set -e
+  - ./autogen.sh
+  - compile_flags=(
+        -pipe
+
+        -O1
+        -g
+        -fsanitize=address
+        -fno-omit-frame-pointer
+
+        -Wall
+        -Wextra
+        -pedantic
+    )
+    && CXXFLAGS="${compile_flags[*]} -std=c++11"
+    && configure_args=(
+        CC=clang-7
+        CXX=clang++-7
+        CXXFLAGS="${CXXFLAGS}"
+        LDFLAGS='-g -fsanitize=address'
+
+        --enable-doc
+    )
+    && ./configure "${configure_args[@]}"  # -Werror would fail configure checks!
+  - make CXXFLAGS="${CXXFLAGS} -Werror" all
+  - make CXXFLAGS="${CXXFLAGS} -Werror" check
+  - ./test/mytest  # i.e. ensure that the example exits with code 0
+  - ./test/mytest --compiler
+  - ./test/mytest --html
+  - ./test/mytest --text-terse
+  - ./test/mytest --text-verbose
+  - make distcheck  # without AddressSanitizer
+  - ./check-abi.sh
+
+addons:
+  apt:
+    sources:
+    # Clang 7:
+      - llvm-toolchain-xenial-7
+      - ubuntu-toolchain-r-test
+    packages:
+      - abi-compliance-checker
+      - clang-7
+      - doxygen
+      - lzip

@@ -1,0 +1,15 @@
+.deps
+.libs
+Makefile
+Makefile.in
+collectoroutput.lo
+compileroutput.lo
+htmloutput.lo
+libcpptest.la
+missing.lo
+source.lo
+suite.lo
+textoutput.lo
+time.lo
+utils.lo
+

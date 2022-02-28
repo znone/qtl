@@ -3,9 +3,15 @@ project (qtl)
 
 set(src ${src})
 set(src ${src} include/qtl_odbc.hpp)
+
+add_subdirectory(cpptest-2.0.0)
+
+include_directories(cpptest-2.0.0/src)
  
 include_directories(include)
-add_executable(TestOdbc test/TestOdbc.cpp ${src})
+add_executable(TestOdbc test/TestOdbc.cpp test/TestOdbc.h ${src} test/md5.c test/md5.h)
+
+add_executable(example_1 example/example_1.cpp ${src})
 
 
 #//////////////////////////
@@ -14,6 +20,7 @@ add_executable(TestOdbc test/TestOdbc.cpp ${src})
 #//////////////////////////
 
 set(lib_dep ${lib_dep})
+set(lib_dep ${lib_dep} cpptest)
 
 #//////////////////////////
 #ODBC Windows
@@ -25,4 +32,5 @@ endif()
 
 
 target_link_libraries (TestOdbc ${lib_dep})
+target_link_libraries (example_1 ${lib_dep})
 
