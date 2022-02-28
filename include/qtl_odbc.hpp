@@ -1,6 +1,13 @@
 #ifndef _QTL_ODCB_H_
 #define _QTL_ODCB_H_
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif //NOMINMAX
+#include <windows.h>
+#endif
+
 #include <sql.h>
 #include <sqlext.h>
 #include <sstream>
