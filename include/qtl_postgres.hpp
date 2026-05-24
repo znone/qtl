@@ -1485,6 +1485,7 @@ public:
 			return 0LL;
 	}
 
+	int64_t get_row_count() const { return PQntuples(m_res); }
 	unsigned int get_column_count() const { return PQnfields(m_res); }
 
 	int get_param_count() const
@@ -1605,6 +1606,22 @@ public:
 	uint64_t affetced_rows() const
 	{
 		return m_res.affected_rows();
+	}
+
+	unsigned int get_column_count() const 
+	{
+		if (m_res)
+			return m_res.get_column_count();
+		else
+			return 0;
+	}
+
+	const char* get_column_name(int col) const
+	{
+		if (m_res)
+			return m_res.get_column_name(col);
+		else
+			return nullptr;
 	}
 
 	void bind_param(size_t index, const char* param, size_t length)
@@ -1880,12 +1897,33 @@ public:
 
 	void execute()
 	{
-		if(!PQsendQueryPrepared(m_conn, _name.data(), 0, nullptr, nullptr, nullptr, 1))
+		if (m_binders.size())
+		{
+			std::vector<const char*> values(m_binders.size());
+			std::vector<int> lengths(m_binders.size());
+			std::vector<int> formats(m_binders.size());
+
+			for (size_t i = 0; i < m_binders.size(); i++)
+			{
+				values[i] = m_binders[i].value();
+				lengths[i] = static_cast<int>(m_binders[i].length());
+				formats[i] = 1;
+			}
+
+			if (!PGSQL::PQsendQueryPrepared(m_conn, _name.data(),
+				(int)m_binders.size(), values.data(), lengths.data(), formats.data(), 1))
+				throw error(m_conn);
+		}
+		else
+		{
+			if (!PGSQL::PQsendQueryPrepared(m_conn, _name.data(), 0, nullptr, nullptr, nullptr, 1))
+				throw error(m_conn);
+		}
+
+		if (!PGSQL::PQsetSingleRowMode(m_conn))
 			throw error(m_conn);
-		if (!PQsetSingleRowMode(m_conn))
-			throw error(m_conn);
-		m_res = PQgetResult(m_conn);
-		verify_error<PGRES_COMMAND_OK, PGRES_SINGLE_TUPLE>();
+		m_res = PGSQL::PQgetResult(m_conn);
+		verify_error<PGSQL::PGRES_COMMAND_OK, PGSQL::PGRES_SINGLE_TUPLE>();
 	}
 
 	template<typename Types>

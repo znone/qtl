@@ -671,6 +671,23 @@ public:
 
 #endif // C++17
 
+	unsigned int get_column_count() const
+	{
+		SQLSMALLINT count = 0;
+		verify_error(SQLNumResultCols(m_handle, &count));
+		return count;
+	}
+
+	std::string get_column_name(SQLSMALLINT col) const
+	{
+		SQLSMALLINT length;
+		std::string name;
+		verify_error(SQLColAttributeA(m_handle, col + 1, SQL_DESC_NAME, NULL, 0, &length, NULL));
+		name.resize(length);
+		verify_error(SQLColAttributeA(m_handle, col + 1, SQL_DESC_NAME, name.data(), length+1, &length, NULL));
+		return name;
+	}
+
 	SQLLEN affetced_rows()
 	{
 		SQLLEN count=0;
@@ -681,17 +698,12 @@ public:
 	size_t find_field(const char* name) const
 	{
 		SQLSMALLINT count=0;
+		SQLCHAR field_name[256] = { 0 };
+		SQLSMALLINT name_length = 0;
 		verify_error(SQLNumResultCols(m_handle, &count));
 		for(SQLSMALLINT i=0; i!=count; i++)
 		{
-			SQLCHAR field_name[256]={0};
-			SQLSMALLINT name_length=0;
-			SQLSMALLINT data_type;
-			SQLULEN column_size;
-			SQLSMALLINT digits;
-			SQLSMALLINT nullable;
-			verify_error(SQLDescribeColA(m_handle, i, field_name, sizeof(field_name), &name_length,
-				&data_type, &column_size, &digits, &nullable));
+			verify_error(SQLColAttributeA(m_handle, i+1, SQL_DESC_NAME, field_name, sizeof(field_name), &name_length, NULL));
 			if(strncmp((char*)field_name, name, name_length)==0)
 				return i;
 		}
@@ -756,6 +768,24 @@ public:
 		open(query_text.data(), query_text.size());
 	}
 
+	SQLSMALLINT get_parameter_count() const
+	{
+		SQLSMALLINT count = 0;
+		verify_error(SQLNumParams(m_handle, &count));
+
+		return count;
+	}
+
+	void resize_binders(size_t n)
+	{
+		m_params.resize(n);
+	}
+
+	void execute()
+	{
+		SQLRETURN ret = SQLExecute(m_handle);
+		verify_error(ret);
+	}
 
 	template<typename Types>
 	void execute(const Types& params)
