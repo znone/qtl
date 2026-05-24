@@ -383,6 +383,13 @@ public:
 
 	unsigned int get_parameter_count() const { return mysql_stmt_param_count(m_stmt); }
 	unsigned int get_column_count() const { return mysql_stmt_field_count(m_stmt); }
+	unsigned const char* get_column_name(int col) const
+	{
+		if (m_result)
+			return m_result->fields[col].name;
+		else
+			return nullptr;
+	}
 
 	unsigned long length(unsigned int index) const
 	{
@@ -784,8 +791,14 @@ public:
 
 	void execute()
 	{
-		resize_binders(0);
-		if(mysql_stmt_execute(m_stmt)!=0)
+		size_t param_count = get_parameter_count();
+
+		if (!param_count)
+			resize_binders(0);
+		else if (param_count == m_binders.size() && mysql_stmt_bind_param(m_stmt, &m_binders.front()))
+			throw_exception();
+
+		if (mysql_stmt_execute(m_stmt) != 0)
 			throw_exception();
 	}
 
@@ -1141,10 +1154,9 @@ public:
 		simple_execute(query, length);
 
 		unsigned int fieldCount = mysql_field_count(m_mysql);
-		MYSQL_RES* result = mysql_store_result(m_mysql);
-		if (fieldCount > 0 && result)
+		MYSQL_RES* result = nullptr;
+		if (fieldCount > 0 && (result = mysql_store_result(m_mysql)))
 		{
-			MYSQL_RES* result = mysql_store_result(m_mysql);
 			MYSQL_ROW row;
 			while (row = mysql_fetch_row(result))
 			{
@@ -1587,7 +1599,7 @@ public:
 	template<typename CloseHandler >
 	void close(CloseHandler&& handler) NOEXCEPT
 	{
-		int status  = mysql_close_start(m_mysql);
+		int status = mysql_close_start(m_mysql);
 		if (status)
 		{
 			wait_close(status, [this, handler]() mutable {
@@ -1853,7 +1865,7 @@ private:
 	}
 
 	template<typename RowHandler, typename ResultHandler>
-	void wait_fetch(int status, MYSQL_RES* result, int field_count,  size_t row_count, RowHandler&& row_handler, ResultHandler&& result_handler)
+	void wait_fetch(int status, MYSQL_RES* result, int field_count, size_t row_count, RowHandler&& row_handler, ResultHandler&& result_handler)
 	{
 		m_event_handler->set_io_handler(event_flags(status), mysql_get_timeout_value(m_mysql),
 			[this, result, field_count, row_count, row_handler, result_handler](int flags) mutable {
@@ -1884,7 +1896,7 @@ private:
 
 };
 
-inline 	async_statement::async_statement(async_connection& db) 
+inline async_statement::async_statement(async_connection& db) 
 : base_statement(static_cast<basic_database&>(db)) 
 {
 	m_event=db.event();

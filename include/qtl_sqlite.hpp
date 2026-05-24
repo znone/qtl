@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <sstream>
+#include <stdint.h>
 #include "qtl_common.hpp"
 
 namespace qtl
@@ -615,23 +616,23 @@ public:
 	{
 		int flags=0;
 		if(mode&std::ios_base::out) flags=1;
-		if(sqlite3_blob_open(db.handle(), dbname, table, column, row, flags, &m_blob)==SQLITE_OK)
+		if(sqlite3_blob_open(db.handle(), dbname, table, column, row, flags, &m_blob)!=SQLITE_OK)
+			throw error(db.handle());
+
+		m_size=sqlite3_blob_bytes(m_blob)/sizeof(char);
+		// prepare buffer
+		size_t bufsize=std::min<size_t>(default_buffer_size, m_size);
+		if(mode&std::ios_base::in)
 		{
-			m_size=sqlite3_blob_bytes(m_blob)/sizeof(char);
-			// prepare buffer
-			size_t bufsize=std::min<size_t>(default_buffer_size, m_size);
-			if(mode&std::ios_base::in)
-			{
-				m_inbuf.resize(bufsize);
-				m_inpos=0;
-				setg(m_inbuf.data(), m_inbuf.data(), m_inbuf.data());
-			}
-			if(mode&std::ios_base::out)
-			{
-				m_outbuf.resize(bufsize);
-				m_outpos=0;
-				setp(m_outbuf.data(), m_outbuf.data()+bufsize);
-			}
+			m_inbuf.resize(bufsize);
+			m_inpos=0;
+			setg(m_inbuf.data(), m_inbuf.data(), m_inbuf.data());
+		}
+		if(mode&std::ios_base::out)
+		{
+			m_outbuf.resize(bufsize);
+			m_outpos=0;
+			setp(m_outbuf.data(), m_outbuf.data()+bufsize);
 		}
 		return this;
 	}
@@ -947,6 +948,7 @@ public:
 	iblobstream& operator=(iblobstream&& src) 
 	{
 		m_buffer.operator =(std::move(src.m_buffer));
+		return *this;
 	}
 
 	bool is_open() const { return m_buffer.is_open(); }
@@ -1005,6 +1007,7 @@ public:
 	oblobstream& operator=(oblobstream&& src) 
 	{
 		m_buffer.operator =(std::move(src.m_buffer));
+		return *this;
 	}
 
 	bool is_open() const { return m_buffer.is_open(); }
@@ -1063,6 +1066,7 @@ public:
 	blobstream& operator=(blobstream&& src) 
 	{
 		m_buffer.operator =(std::move(src.m_buffer));
+		return *this;
 	}
 
 	bool is_open() const { return m_buffer.is_open(); }

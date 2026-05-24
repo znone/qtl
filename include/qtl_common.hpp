@@ -28,6 +28,14 @@
 #include <any>
 #endif // C++17
 
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 202002L) || __cplusplus >= 202002L)
+#define _QTL_ENABLE_CPP20
+#endif 
+
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 202604L) || __cplusplus >= 202604L)
+#define _QTL_ENABLE_CPP26
+#endif 
+
 namespace qtl
 {
 
