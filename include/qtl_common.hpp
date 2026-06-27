@@ -32,7 +32,7 @@
 #define _QTL_ENABLE_CPP20
 #endif 
 
-#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 202604L) || __cplusplus >= 202604L)
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 202604L) || __cplusplus >= 202400L)
 #define _QTL_ENABLE_CPP26
 #endif 
 
@@ -124,7 +124,7 @@ struct bind_string_helper
 	void clear() { m_value.clear(); }
 	char_type* alloc(size_t n) { m_value.resize(n); return (char_type*)m_value.data(); }
 	void truncate(size_t n) { m_value.resize(n); }
-	void assign(const char_type* str, size_t n) { m_value.assign(str, n); }
+	void assign(const char_type* str, size_t n) { m_value.assign(str, str+n); }
 	const char_type* data() const { return m_value.data(); }
 	size_t size() const { return m_value.size(); }
 private:
@@ -624,6 +624,19 @@ inline void fetch_command(Command& command, ValueProc&& proc, OtherProc&&... oth
 		fetch_command(command, std::forward<OtherProc>(other)...);
 	}
 }
+		
+#ifdef _QTL_ENABLE_CPP17
+
+	template<typename T>
+	inline void destroy_trivially(T* p1, T* p2)
+	{
+		if constexpr (!std::is_trivially_destructible<T>::value)
+		{
+			if (p1 == p2) std::destroy_at(p1);
+		}
+	}
+	
+#endif //_QTL_ENABLE_CPP17
 
 }
 
@@ -709,62 +722,58 @@ struct record_with_tag : public T
 };
 
 template<typename T, typename Pred>
-struct custom_binder_type : public T
+struct custom_binder_type
 {
 	typedef T value_type;
 
-	explicit custom_binder_type(Pred pred) : m_pred(pred) { }
-	custom_binder_type(value_type&& v, Pred pred)
-		: value_type(std::forward<value_type>(v)), m_pred(pred)
+	explicit custom_binder_type(Pred pred) : _value(*new(_defobj) T()), m_pred(pred) { }
+	custom_binder_type(value_type& v, Pred pred)
+		: _value(v), m_pred(pred)
 	{
 	}
 	template<typename... Args>
 	custom_binder_type(Pred pred, Args&&... args)
-		: value_type(std::forward<Args>(args)...), m_pred(pred)
+		: _value(*new(_defobj) T(std::forward<Args>(args)...)), m_pred(pred)
 	{
+	}
+	~custom_binder_type()
+	{
+#ifdef _QTL_ENABLE_CPP17
+		if constexpr (!std::is_trivially_destructible<T>::value)
+#endif
+			if (reinterpret_cast<T*>(_defobj) == &_value) std::destroy_at(&_value);
 	}
 
 	template<typename Command>
 	void bind(Command& command)
 	{
-		m_pred(std::forward<T>(*this), command); // Pred maybe member function
+		m_pred(command, std::forward<T>(*this)); // Pred maybe member function
 	}
 
+	operator T& () { return _value; }
+
 private:
+	char _defobj[sizeof(T)];
+	T& _value;
 	Pred m_pred;
 };
 
 template<typename T, typename Pred>
-struct custom_binder_type<std::reference_wrapper<T>, Pred> : public std::reference_wrapper<T>
+inline custom_binder_type<T, Pred> custom_bind(Pred pred)
 {
-	typedef std::reference_wrapper<T> value_type;
-
-	explicit custom_binder_type(Pred pred) : m_pred(pred) { }
-	custom_binder_type(value_type&& v, Pred pred)
-		: value_type(std::forward<value_type>(v)), m_pred(pred)
-	{
-	}
-	template<typename... Args>
-	custom_binder_type(Pred pred, Args&&... args)
-		: T(std::forward<Args>(args)...), m_pred(pred)
-	{
-	}
-
-	template<typename Command>
-	void bind(Command& command)
-	{
-		m_pred(std::forward<T>(*this), command); // Pred maybe member function
-	}
-
-private:
-	Pred m_pred;
-};
-
+	return custom_binder_type<T, Pred>(pred);
+}
 
 template<typename T, typename Pred>
-inline custom_binder_type<T, Pred> custom_bind(T&& v, Pred pred)
+inline custom_binder_type<T, Pred> custom_bind(T& v, Pred pred)
 {
 	return custom_binder_type<T, Pred>(std::forward<T>(v), pred);
+}
+
+template<typename T, typename Pred, typename... Args>
+inline custom_binder_type<T, Pred> custom_bind(Pred pred, Args... args)
+{
+	return custom_binder_type<T, Pred>(pred, args...);
 }
 
 template<typename Command, typename T, typename Pred>

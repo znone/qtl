@@ -116,36 +116,19 @@ for(auto& record : db.result<TestMysqlRecord>("select * from test"))
 1. 为你的字符串类型，对 qtl::bind_string_helper 实现一个专门化。如果该字符串类型有符合标准库字符串语义的以下成员函数，可以跳过这一步：assign，clear，resize，data，size；
 2. 为你的字符串类型，对 qtl::bind_field 实现一个专门化；
 
-因为 QT 的 QByteArray 有兼容标准库的成员函数，所以绑定到 QByteArray 只需要一步：
-一般数据库不提供到 QChar/QString 的绑定，所以只能先用 QByteArray 接收数据，然后转换为 QString。
-
-```C++
-namespace qtl
-{
-	template<typename Command>
-	inline void bind_field(Command& command, size_t index, QByteArray&& value)
-	{
-		command.bind_field(index, bind_string(std::forward<QByteArray>(value)));
-	}
-}
-
-```
-
 #### 11. 在不同查询中复用同一数据结构
 通常希望复用结构，将其绑定到多个不同的查询的结果集，这时候 qtl::bind_record就不够用了。需要利用 qtl::custom_bind 实现不同的绑定函数才能实现这一需求。有如下绑定函数：
 
 ```C++
-void my_bind(TestMysqlRecord&& v, qtl::sqlite::statement& command)
+void my_bind(qtl::sqlite::statement& command, TestSqliteRecord&& v)
 {
-	qtl::bind_field(command, "id", v.id);
-	qtl::bind_field(command, 1, v.name);
-	qtl::bind_field(command, 2, v.create_time);
+	qtl::bind_fields(command, v.id, v.name, v.create_time);
 }
 ```
 以下代码说明如何将其用于查询：
 ```C++
 db->query_explicit("select * from test where id=?", id, 
-	qtl::custom_bind(TestMysqlRecord(), &my_bind),
+	qtl::custom_bind<TestMysqlRecord>(&my_bind),
 	[](const TestMysqlRecord& record) {
 		printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
 	});

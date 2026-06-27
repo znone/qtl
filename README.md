@@ -116,36 +116,19 @@ In addition to the std::string provided by the standard library, other libraries
 1. Implement a specialization for qtl::bind_string_helper for your string type. If this string type has the following member functions that conform to the standard library string semantics, you can skip this step: assign, clear, resize, data, size;
 2. Implement a specialization for qtl::bind_field for your string type;
 
-Because QT's QByteArray has member functions compatible with the standard library, binding to QByteArray requires only one step:
-Generally, the database does not provide binding to QChar/QString, so you can only use QByteArray to receive data, and then convert it to QString.
-
-```C++
-namespace qtl
-{
-	template<typename Command>
-	inline void bind_field(Command& command, size_t index, QByteArray&& value)
-	{
-		command.bind_field(index, bind_string(std::forward<QByteArray>(value)));
-	}
-}
-
-```
-
 #### 11. Reuse the same data structure in different queries
 Usually you want to reuse the structure and bind it to the result set of multiple different queries. At this time qtl::bind_record is not enough. You need to implement different binding functions with qtl::custom_bind to achieve this requirement. There are the following binding functions:
 
 ```C++
-void my_bind(TestMysqlRecord&& v, qtl::sqlite::statement& command)
+void my_bind(qtl::sqlite::statement& command, TestSqliteRecord&& v)
 {
-	qtl::bind_field(command, "id", v.id);
-	qtl::bind_field(command, 1, v.name);
-	qtl::bind_field(command, 2, v.create_time);
+	qtl::bind_fields(command, v.id, v.name, v.create_time);		
 }
 ```
 The following code shows how to use it for queries:
 ```C++
 db->query_explicit("select * from test where id=?", id, 
-	qtl::custom_bind(TestMysqlRecord(), &my_bind),
+	qtl::custom_bind<TestMysqlRecord>(&my_bind),
 	[](const TestMysqlRecord& record) {
 		printf("ID=\"%d\", Name=\"%s\"\n", record.id, record.name);
 	});

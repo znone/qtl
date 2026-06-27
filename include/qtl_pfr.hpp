@@ -9,44 +9,10 @@
 
 #include <boost/pfr.hpp>
 #include <boost/preprocessor.hpp>
+#include "qtl_minmax.hpp"
 
 namespace qtl
 {
-
-namespace detail
-{
-
-	template<class T, T... Is>
-	struct max;
-
-	template<class T, T I1, T... Is >
-	struct max<T, I1, Is...> : public std::integral_constant<T, (I1 > max<T, Is...>::value ? I1 : max<T, Is...>::value)>
-	{
-	};
-	template<class T, T I1>
-	struct max<T, I1> : public std::integral_constant<T, I1>
-	{
-	};
-
-	template<class T, T... Is>
-	struct min;
-
-	template<class T, T I1, T... Is>
-	struct min<T, I1, Is...> : public std::integral_constant<T, (I1 < max<T, Is...>::value ? I1 : max<T, Is...>::value)>
-	{
-	};
-	template<class T, T I1>
-	struct min<T, I1> : public std::integral_constant<T, I1>
-	{
-	};
-
-}
-
-template<class T, T... I>
-constexpr T max = detail::max<T, I...>::value;
-
-template<class T, T... I>
-constexpr T min = detail::min<T, I...>::value;
 
 namespace pfr
 {
@@ -54,8 +20,17 @@ namespace pfr
 	template<class T, typename = typename std::enable_if<std::is_class<T>::value>::type>
 	struct all_bind
 	{
-		all_bind() : _record(_defvalue) { }
+		all_bind() : _record(*new(_defvalue)T()) { }
 		explicit all_bind(T& value) : _record(value) { }
+		template<typename... Args>
+		explicit all_bind(Args&&... args)
+			: _record(*new(_defvalue) T(std::forward<Args>(args)...))
+		{
+		}
+		~all_bind()
+		{
+			detail::destroy_trivially(&_record, reinterpret_cast<T*>(_defvalue));
+		}
 
 		template<typename Command>
 		void bind(Command& command)
@@ -66,15 +41,24 @@ namespace pfr
 		operator T& () { return _record; }
 
 	private:
-		T _defvalue;
+		char _defvalue[sizeof(T)];
 		T& _record;
 	};
 
 	template<class T, size_t... Indexes>
 	struct partition_bind
 	{
-		partition_bind() : _record(_defvalue) { check_indexes(); }
+		partition_bind() : _record(*new(_defvalue)T()) { check_indexes(); }
 		explicit partition_bind(T& value) : _record(value) { check_indexes(); }
+		template<typename... Args>
+		explicit partition_bind(Args&&... args)
+			: _record(*new(_defvalue) T(std::forward<Args>(args)...))
+		{
+		}
+		~partition_bind()
+		{
+			detail::destroy_trivially(&_record, reinterpret_cast<T*>(_defvalue));
+		}
 
 		template<typename Command>
 		void bind(Command& command)
@@ -86,7 +70,7 @@ namespace pfr
 		operator T& () { return _record; }
 
 	private:
-		T _defvalue;
+		char _defvalue[sizeof(T)];
 		T& _record;
 
 		template<typename Command, size_t No, size_t I, size_t... Others>
@@ -172,8 +156,17 @@ namespace pfr
 	template<class T, typename Matcher, typename = typename std::enable_if<std::is_class<T>::value>::type>
 	struct auto_bind_t
 	{
-		auto_bind_t(Matcher matcher) : _record(_defvalue), _matcher(matcher) { }
+		auto_bind_t(Matcher matcher) : _record(*new(_defvalue)T()), _matcher(matcher) { }
 		explicit auto_bind_t(T& value, Matcher matcher) : _record(value), _matcher(matcher) { }
+		template<typename... Args>
+		explicit auto_bind_t(Matcher matcher, Args&&... args)
+			: _record(*new(_defvalue) T(std::forward<Args>(args)...)), _matcher(matcher)
+		{
+		}
+		~auto_bind_t()
+		{
+			detail::destroy_trivially(&_record, reinterpret_cast<T*>(_defvalue));
+		}
 
 		template<typename Command>
 		void bind(Command& command)
@@ -184,7 +177,7 @@ namespace pfr
 		operator T& () { return _record; }
 
 	private:
-		T _defvalue;
+		char _defvalue[sizeof(T)];
 		T& _record;
 		Matcher _matcher;
 
@@ -215,6 +208,12 @@ namespace pfr
 		return auto_bind_t<T, Matcher>(matcher);
 	}
 
+	template<class T, typename Matcher, typename... Args>
+	inline auto_bind_t<T, Matcher> auto_bind(Matcher matcher, Args... args)
+	{
+		return auto_bind_t<T, Matcher>(matcher, args...);
+	}
+
 }
 
 template<typename Command, typename T, typename Matcher>
@@ -232,8 +231,12 @@ template<class T, typename... Members>
 struct bind_struct_t
 {
 public:
-	bind_struct_t(Members T::*... members) : _value(_defobj), _fields(std::tie(_value.*members...)) {  }
+	bind_struct_t(Members T::*... members) : _value(*new(_defobj)T()), _fields(std::tie(_value.*members...)) {  }
 	bind_struct_t(T& obj, Members T::*... members) : _value(obj), _fields(std::tie(_value.*members...)) { }
+	~bind_struct_t()
+	{
+		detail::destroy_trivially(&_value, reinterpret_cast<T*>(_defobj));
+	}
 
 	template<typename Command>
 	void bind(Command& command)
@@ -244,7 +247,7 @@ public:
 	operator T& () { return _value; }
 
 private:
-	T _defobj;
+	char _defobj[sizeof(T)];
 	T& _value;
 	std::tuple<Members&...> _fields;
 };
