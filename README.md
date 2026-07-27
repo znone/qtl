@@ -380,7 +380,7 @@ values：Receive result data, which can be one data or a group of data (tuple or
 | struct qtl::pfr::partition_bind<br/>qtl::pfr::bind_some()<br/>struct qtl::partition_bind<br/>qtl::bind_some() | Bind the fields with the specified serial number in the structure to the query results in the listed order |
 | qtl::pfr::bind_front()<br/>qtl::bind_front() | Bind the first few fields in the structure to the query results |
 | qtl::pfr::auto_bind()<br/>qtl::auto_bind() | It is automatically bound to the query results according to the field names in the structure, which is simple to use but slow<br/>C++20 or C++26 is required |
-| 宏QTL::BIND_STRUCT<br/>Bind the fields specified in the structure to the query results in turn<br/>The boost.processor library is required |
+| Micro QTL::BIND_STRUCT<br/>Micro QTL_BIND_OBJECT | Bind the fields specified in the structure to the query results in turn<br/>The boost.processor library is required |
 
 |C++ Standard| Method |
 | ---- | ---- |
@@ -534,7 +534,7 @@ template<typename Connection, typename CloseHandler, typename... Args>
 inline ASIO_INITFN_RESULT_TYPE(CloseHandler, void()) 
 async_close(Connection& db, CloseHandler&& handler, Args&&... args);
 ```
-#### qtl::asio::async_execute等
+#### qtl::asio::async_execute etc
 Execute SQL statements asynchronously, etc.
 ```C++
 template<typename Connection, typename ExecuteHandler, typename... Args>
