@@ -200,9 +200,9 @@ inline auto_bind_t<T, Matcher> auto_bind(Matcher matcher = Matcher())
 }
 
 template<class T, typename Matcher, typename... Args>
-inline auto_bind_t<T, Matcher> auto_bind(Matcher matcher, Args... args)
+inline auto_bind_t<T, Matcher> auto_bind(Matcher matcher, Args&&... args)
 {
-	return auto_bind_t<T, Matcher>(matcher, args...);
+	return auto_bind_t<T, Matcher>(matcher, std::forward<Args>(args)...);
 }
 
 template<typename Command, typename T, typename Matcher>

@@ -2,8 +2,6 @@
 QTL是一个访问SQL数据库的C++库，目前支持MySQL、SQLite和ODBC。QTL是一个轻量级的库，只由头文件组成，不需要单独编译安装。QTL是对数据库原生客户端接口的薄封装，能提供友好使用方式的同时拥有接近于使用原生接口的性能。
 使用QTL需要支持C++11的编译器。
 
-[![996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)
-
 ## 使用方式
 
 ### 打开数据库
@@ -27,6 +25,11 @@ uint64_t id=db.insert("insert into test(Name, CreateTime) values(?, now())", "te
 ```C++
 db.execute_direct("update test set Name=? WHERE ID=?",  NULL, "other_user", id);
 ```
+或者
+```C++
+db.execute("update test set Name=? WHERE ID=?", std::forward_as_tuple("other_user", id));
+```
+
 #### 3. 更新多条记录：
 
 ```C++
@@ -156,10 +159,10 @@ db.query_multi("call test_proc",
 
 ```
 
-#### 13. 异步调用数据库
+### 异步调用数据库
 
 通过类async_connection可以异步调用数据库。所有的异步函数都需要提供一个回调函数接受操作完成后的结果。如果异步调用中发生错误，错误做为回调函数的参数返回给调用者。
-```
+```C++
 qtl::mysql::async_connection connection;
 connection.open(ev, [&connection](const qtl::mysql::error& e) {
 	...
@@ -168,7 +171,7 @@ connection.open(ev, [&connection](const qtl::mysql::error& e) {
 ```
 
 异步调用在事件循环中完成。ev是事件循环对象。QTL只提出它对事件循环的需求，并不实现事件循环。QTL要求事件循环提供如下接口，该接口由用户代码实现：
-```
+```C++
 class EventLoop
 {
 public:
@@ -183,7 +186,7 @@ public:
 ```
 
 qtl::event是QTL中定义的一个事件项接口，用户代码同样应该实现它：
-```
+```C++
 struct event
 {
 	// IO事件标志
@@ -207,6 +210,358 @@ struct event
 
 ```
 数据库连接通常不是线程安全的。用户代码应该保证，一个连接只能同时由一个线程使用。
+
+## 常用函数简要说明
+
+### database
+
+#### execute 和 execute_direct
+执行SQL语句。
+```C++
+template<typename Params>
+base_database& execute(const char* query_text, size_t text_length, const Params& params, uint64_t* affected=NULL);
+template<typename Params>
+database& execute(const char* query_text, const Params& params, uint64_t* affected=NULL);
+template<typename Params>
+database& execute(const std::string& query_text, const Params& params, uint64_t* affected=NULL);
+template<typename... Params>
+database& execute_direct(const char* query_text, size_t text_length, uint64_t* affected, const Params&... params);
+template<typename... Params>
+database& execute_direct(const char* query_text, uint64_t* affected, const Params&... params);
+template<typename... Params>
+database& execute_direct(const std::string& query_text, uint64_t* affected, const Params&... params);
+```
+参数query_text和text_length：SQL语句和语句长度。text_length=0时，默认SQL语句以'\0'结尾。
+参数params：执行SQL语句的参数，可以是一个参数或一组参数（元组）。
+参数affected：返回执行SQL语句影响的记录行数。该参数为nullptr时，不返回该数值。
+
+可以以任何能被接受的数据类型做为参数传递给该函数。参数通过函数qtl::bind_param绑定。
+```C++
+template<typename Command, typename T>
+inline void bind_param(Command& command, size_t index, const T& param);
+```
+下面的表格列出了不同DBMS可以接受的参数类型。可以特别化函数bind_param，以将任意数据类型做为参数传递。
+
+_QTL已经针对std::optional特别化了该函数，当该参数不包含数据时，传递null给数据库。_
+
+#### insert和insert_direct
+执行插入操作。
+```C++
+template<typename Params>
+uint64_t insert(const char* query_text, size_t text_length, const Params& params);
+template<typename Params>
+uint64_t insert(const char* query_text, const Params& params);
+template<typename Params>
+uint64_t insert(const std::string& query_text, const Params& params);
+template<typename... Params>
+uint64_t insert_direct(const char* query_text, size_t text_length, const Params&... params);
+template<typename... Params>
+uint64_t insert_direct(const char* query_text, const Params&... params);
+template<typename... Params>
+uint64_t insert_direct(const std::string& query_text, const Params&... params);
+```
+各个参数含义与含义execute相同。成功插入数据后，返回记录ID。
+
+#### result
+执行查询语句，返回查询结果。
+```C++
+template<typename Record, typename Params>
+query_result<Command, Record> result(const char* query_text, size_t text_length, const Params& params);
+template<typename Record, typename Params>
+query_result<Command, Record> result(const char* query_text, const Params& params);
+template<typename Record, typename Params>
+query_result<Command, Record> result(const std::string& query_text, const Params& params);
+template<typename Record>
+query_result<Command, Record> result(const char* query_text, size_t text_length);
+template<typename Record>
+query_result<Command, Record> result(const char* query_text);
+template<typename Record>
+query_result<Command, Record> result(const std::string& query_text);
+```
+模板参数Record是能接收查询结果集的数据类型。QTL通过qtl::bind_record将该数据类型绑定到结果集上。
+查询结果可以看作容器，支持前向迭代器。
+```C++
+template<typename Command, typename T>
+inline void bind_record(Command& command, T&& value);
+```
+该函数调用qtl::bind_field绑定数据到字段上。
+```C++
+template<typename Command, typename T>
+inline void bind_field(Command& command, size_t index, T& value)
+```
+这两个函数都可以根据需要特别化。下面的表格列出了不同DBMS可以接受的参数类型。
+
+_QTL已经针对std::optional特别化了函数bind_field，当该参数不包含数据时，传递null给数据库。_
+#### query和query_explicit
+执行查询语句，并在回调函数中处理查询结果。
+```C++
+template<typename Params, typename Values, typename ValueProc>
+database& query_explicit(const char* query_text, size_t text_length, const Params& params, Values&& values, ValueProc&& proc);
+template<typename Params, typename Values, typename ValueProc>
+database& query_explicit(const char* query_text, const Params& params, Values&& values, ValueProc&& proc);
+template<typename Params, typename Values, typename ValueProc>
+database& query_explicit(const std::string& query_text, const Params& params, Values&& values, ValueProc&& proc);
+template<typename Values, typename ValueProc>
+database& query_explicit(const char* query_text, size_t text_length, Values&& values, ValueProc&& proc);
+template<typename Values, typename ValueProc>
+database& query_explicit(const char* query_text, Values&& values, ValueProc&& proc);
+template<typename Values, typename ValueProc>
+database& query_explicit(const std::string& query_text, Values&& values, ValueProc&& proc);
+template<typename Params, typename ValueProc>
+database& query(const char* query_text, size_t text_length, const Params& params, ValueProc&& proc);
+template<typename Params, typename ValueProc>
+database& query(const char* query_text, const Params& params, ValueProc&& proc);
+template<typename Params, typename ValueProc>
+database& query(const std::string& query_text, const Params& params, ValueProc&& proc);
+template<typename ValueProc>
+database& query(const char* query_text, size_t text_length, ValueProc&& proc);
+template<typename ValueProc>
+database& query(const char* query_text, ValueProc&& proc);
+template<typename ValueProc>
+database& query(const std::string& query_text, ValueProc&& proc);
+```
+参数proc：处理结果集的回调函数，每个记录调用一次该函数。
+可以不传递绑定结果集的数据类型，该函数可以通过回调函数的参数绑定结果集。如果传递的数据类型与回调函数的参数不一致，需要保证该数据类型能隐式转换为回调函数的参数。
+#### query_multi_with_params 和 query_multi
+执行查询语句，处理多个结果集。
+```C++
+template<typename Params, typename... ValueProc>
+database& query_multi_with_params(const char* query_text, size_t text_length, const Params& params, ValueProc&&... proc);
+template<typename Params, typename... ValueProc>
+databasw& query_multi_with_params(const char* query_text, const Params& params, ValueProc&&... proc);
+template<typename Params, typename... ValueProc>
+database& query_multi_with_params(const std::string& query_text, const Params& params, ValueProc&&... proc)；
+template<typename... ValueProc>
+database& query_multi(const char* query_text, size_t text_length, ValueProc&&... proc);
+template<typename... ValueProc>
+database& query_multi(const char* query_text, ValueProc&&... proc);
+template<typename... ValueProc>
+databased& query_multi(const std::string& query_text, ValueProc&&... proc);
+```
+参数包proc：为每个结果集提供一个回调函数。
+#### query_first 和 query_first_direct
+执行查询语句，获取结果集的第一行数据。
+```C++
+template<typename Params, typename Values>
+bool query_first(const char* query_text, size_t text_length, const Params& params, Values&& values);
+template<typename Params, typename Values>
+bool query_first(const char* query_text, const Params& params, Values&& values);
+template<typename Params, typename Values>
+bool query_first(const std::string& query_text, const Params& params, Values&& values);
+template<typename Values>
+bool query_first(const char* query_text, size_t text_length, Values&& values);
+template<typename Values>
+bool query_first(const char* query_text, Values&& values);
+template<typename Values>
+bool query_first(const std::string& query_text, Values&& values);
+template<typename... Values>
+bool query_first_direct(const char* query_text, size_t text_length, Values&... values);
+template<typename... Values>
+bool query_first_direct(const char* query_text, Values&... values);
+template<typename... Values>
+bool query_first_direct(const std::string& query_text, Values&... values);
+```
+参数values：接收结果数据，可以是一个数据或一组数据（元祖或者参数包）。
+
+
+### 各种绑定数据到结构的方法汇总
+
+| 方法 | 特点 |
+| ---- | ---- |
+| struct qtl::record_binder<br/>qtl::bind_record() | QTL约定的绑定数据的类和函数。每个结构都需要专门化这个类或者函数，把字段一个个绑定到查询结果 |
+| qtl::custom_bind() | 可以用任何函数绑定结构体到查询结果，把字段一个个绑定到查询结果 |
+| qtl::pfr::all_bind<br/>qtl::all_bind | 按照顺序把结构中的所有字段绑定到查询结果。从这以下的方法都不需要为结构编写专门化的函数<br/>qtl::pfr::all_bind需要boost.pfr库，qtl::all_bind需要C++26，下同。 |
+| struct qtl::pfr::partition_bind<br/>qtl::pfr::bind_some()<br/>struct qtl::partition_bind<br/>qtl::bind_some() | 把结构体中指定序号的字段按照列出顺序绑定到到查询结果 |
+| qtl::pfr::bind_front()<br/>qtl::bind_front() | 绑定结构体中的前几个字段到查询结果 |
+| qtl::pfr::auto_bind()<br/>qtl::auto_bind() | 按照结构体中的字段名称自动绑定到查询结果，使用简便，但速度较慢<br/>需要C++20 |
+| 宏QTL::BIND_STRUCT<br/>宏QTL_BIND_OBJECT | 把结构体中指定的字段依次绑定到查询结果<br/>需要boost.preprocessor库 |
+
+|C++标准| 方法 |
+| ---- | ---- |
+|C++11| qtl::custom_bind()<br/>宏QTL::BIND_STRUCT<br/>宏QTL_BIND_OBJECT |
+|C++17| struct qtl::pfr::all_bind<br/>struct qtl::pfr::partition_bind<br/> |
+|C++20| qtl::pfr::auto_bind() |
+|C++26| struct qtl::all_bind<br/>struct qtl::partition_bind<br/>qtl::auto_bind() |
+
+
+### async_connection
+
+#### bind
+在执行异步操作前，关联到事件循环。
+```C++
+template<typename EventLoop>
+bool bind(EventLoop& ev);
+bool unbind();
+```
+#### unbind
+从事件循环中移除。
+```C++
+bool unbind();
+```
+
+#### execute 和 execute_direct
+异步执行SQL语句。
+```C++
+template<typename Params, typename ResultHandler>
+void execute(ResultHandler handler, const char* query_text, size_t text_length, const Params& params);
+template<typename Params, typename ResultHandler>
+void execute(ResultHandler handler, const char* query_text, const Params& params);
+template<typename Params, typename ResultHandler>
+void execute(ResultHandler handler, const std::string& query_text, const Params& params);
+template<typename... Params, typename ResultHandler>
+void execute_direct(ResultHandler handler, const char* query_text, size_t text_length, const Params&... params);
+template<typename... Params, typename ResultHandler>
+void execute_direct(ResultHandler handler, const char* query_text, const Params&... params);
+template<typename... Params, typename ResultHandler>
+void execute_direct(ResultHandler handler, const std::string& query_text, const Params&... params);
+```
+参数handler：当执行完毕时的回调函数。
+```C++
+void handler(const exception_type& e, uint64_t affected=0);
+```
+参数e：执行时发生的错误。
+参数affected：SQL语句影响的记录数。 
+
+#### insert 和 insert_direct
+异步执行插入语句。
+```C++
+template<typename Params, typename ResultHandler>
+void insert(ResultHandler handler, const char* query_text, size_t text_length, const Params& params);
+template<typename Params, typename ResultHandler>
+void insert(ResultHandler&& handler, const char* query_text, const Params& params);
+template<typename Params, typename ResultHandler>
+void insert(ResultHandler&& handler, const std::string& query_text, const Params& params);
+template<typename... Params, typename ResultHandler>
+void insert_direct(ResultHandler&& handler, const char* query_text, size_t text_length, const Params&... params);
+template<typename... Params, typename ResultHandler>
+void insert_direct(ResultHandler&& handler, const char* query_text, const Params&... params);
+template<typename... Params, typename ResultHandler>
+void insert_direct(ResultHandler&& handler, const std::string& query_text, const Params&... params);
+```
+参数handler：当执行完毕时的回调函数。
+```C++
+void handler(const exception_type& e, uint64_t insert_id=0);
+```
+#### query_explicit 和 query
+异步执行查询语句。
+```C++
+template<typename Params, typename Values, typename RowHandler, typename FinishHandler>
+void query_explicit(const char* query_text, size_t text_length, const Params& params, Values&& values, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Params, typename Values, typename RowHandler, typename FinishHandler>
+void query_explicit(const char* query_text, const Params& params, Values&& values, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Params, typename Values, typename RowHandler, typename FinishHandler>
+void query_explicit(const std::string& query_text, const Params& params, Values&& values, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Values, typename RowHandler, typename FinishHandler>
+void query_explicit(const char* query_text, size_t text_length, Values&& values, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Values, typename RowHandler, typename FinishHandler>
+void query_explicit(const char* query_text, Values&& values, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Values, typename RowHandler, typename FinishHandler>
+void query_explicit(const std::string& query_text, Values&& values, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Params, typename RowHandler, typename FinishHandler>
+void query(const char* query_text, size_t text_length, const Params& params, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Params, typename RowHandler, typename FinishHandler>
+void query(const char* query_text, const Params& params, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename Params, typename RowHandler, typename FinishHandler>
+void query(const std::string& query_text, const Params& params, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename RowHandler, typename FinishHandler>
+void query(const char* query_text, size_t text_length, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename RowHandler, typename FinishHandler>
+void query(const char* query_text, RowHandler&& row_handler, FinishHandler&& finish_handler);
+template<typename RowHandler, typename FinishHandler>
+void query(const std::string& query_text, RowHandler&& row_handler, FinishHandler&& finish_handler);
+```
+参数row_handler：处理结果集的回调函数，每行记录调用一次该函数。
+参数finish_handler：当查询完毕时的回调函数。
+
+#### query_multi_with_params 和 query_multi
+异步执行查询语句，处理多个结果集。
+```C++
+template<typename Params, typename FinishHandler, typename... RowHandlers>
+void query_multi_with_params(const char* query_text, size_t text_length, const Params& params, FinishHandler&& finish_handler, RowHandlers&&... row_handlers);
+template<typename Params, typename FinishHandler, typename... RowHandlers>
+void query_multi_with_params(const char* query_text, const Params& params, FinishHandler&& finish_handler, RowHandlers&&... row_handlers);
+template<typename Params, typename FinishHandler, typename... RowHandlers>
+void query_multi_with_params(const std::string& query_text, const Params& params, FinishHandler&& finish_handler, RowHandlers&&... row_handlers);
+template<typename FinishHandler, typename... RowHandlers>
+void query_multi(const char* query_text, size_t text_length, FinishHandler&& finish_handler, RowHandlers&&... row_handlers);
+template<typename FinishHandler, typename... RowHandlers>
+void query_multi(const char* query_text, FinishHandler&& finish_handler, RowHandlers&&... row_handlers);
+template<typename FinishHandler, typename... RowHandlers>
+void query_multi(const std::string& query_text, FinishHandler&& finish_handler, RowHandlers&&... row_handlers);
+```
+参数包row_handlers：为每个结果集提供一个回调函数。
+
+### asio相关
+
+###E claass qtl::asio::service
+封装asio::service，提供可以进行异步数据库操作的事件循环。
+```C++
+class service
+{
+public:
+	typedef asio::io_context service_type;
+	service() noexcept;
+	explicit service(int concurrency_hint);
+	void reset();
+	void run();
+	void stop();
+	service_type& context() noexcept;
+};
+```
+
+#### qtl::asio::async_open
+异步连接数据库。
+```C++
+template<typename Connection, typename OpenHandler, typename... Args>
+inline ASIO_INITFN_RESULT_TYPE(OpenHandler, void(typename Connection::exception_type)) 
+async_open(service& service, Connection& db, OpenHandler&& handler, Args&&... args);
+```
+#### qtl::asio::async_close
+异步关闭数据库连接。
+```C++
+template<typename Connection, typename CloseHandler, typename... Args>
+inline ASIO_INITFN_RESULT_TYPE(CloseHandler, void()) 
+async_close(Connection& db, CloseHandler&& handler, Args&&... args);
+```
+#### qtl::asio::async_execute等
+异步执行SQL语句等。
+```C++
+template<typename Connection, typename ExecuteHandler, typename... Args>
+ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t))  
+async_execute(Connection& db, ExecuteHandler&& handler, Args&&... args);
+template<typename Connection, typename ExecuteHandler, typename... Args>
+ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t))  
+async_execute_direct(Connection& db, ExecuteHandler&& handler, Args&&... args);
+
+template<typename Connection, typename ExecuteHandler, typename... Args>
+ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t)) 
+async_insert(Connection& db, ExecuteHandler&& handler, Args&&... args);
+template<typename Connection, typename ExecuteHandler, typename... Args>
+ASIO_INITFN_RESULT_TYPE(ExecuteHandler, void(typename Connection::exception_type, uint64_t))； 
+async_insert_direct(Connection& db, ExecuteHandler&& handler, Args&&... args);
+
+template<typename Connection, typename FinishHandler, typename... Args>
+ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type)) 
+async_query(Connection& db, FinishHandler&& handler, Args&&... args);
+template<typename Connection, typename FinishHandler, typename... Args>
+ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type)) 
+async_query_explicit(Connection& db, FinishHandler&& handler, Args&&... args);
+
+template<typename Connection, typename A1, typename A2, typename FinishHandler, typename... RowHandlers>
+ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))
+async_query_multi_with_params(Connection& db, A1&& a1, A2&& a2, FinishHandler&& handler, RowHandlers&&... row_handlers);
+template<typename Connection, typename A1, typename FinishHandler, typename... RowHandlers>
+ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))；
+async_query_multi_with_params(Connection& db, A1&& a1, FinishHandler&& handler, RowHandlers&&... row_handlers);
+
+template<typename Connection, typename A1, typename A2, typename FinishHandler, typename... RowHandlers>
+ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))
+async_query_multi(Connection& db, A1&& a1, A2&& a2, FinishHandler&& handler, RowHandlers&&... row_handlers);
+template<typename Connection, typename A1, typename FinishHandler, typename... RowHandlers>
+ASIO_INITFN_RESULT_TYPE(FinishHandler, void(typename Connection::exception_type))
+async_query_multi(Connection& db, A1&& a1, FinishHandler&& handler, RowHandlers&&... row_handlers);
+
+```
 
 ## 有关MySQL的说明
 
